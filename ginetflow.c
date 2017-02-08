@@ -283,15 +283,19 @@ g_inet_flow_get_property (GObject *object,
     {
         GInetAddress *gaddress = g_inet_address_new_from_bytes (
                 (guint8 *)flow->tuple.lower_ip, flow->family);
-        g_value_set_string (value, g_inet_address_to_string (gaddress));
+        gchar *address = g_inet_address_to_string (gaddress);
+        g_value_set_string (value, address);
+        g_free (address);
         g_object_unref (gaddress);
         break;
     }
     case FLOW_UIP:
     {
         GInetAddress *gaddress = g_inet_address_new_from_bytes (
-                (guint8 *)flow->tuple.lower_ip, flow->family);
-        g_value_set_string (value, g_inet_address_to_string (gaddress));
+                (guint8 *)flow->tuple.upper_ip, flow->family);
+        gchar *address = g_inet_address_to_string (gaddress);
+        g_value_set_string (value, address);
+        g_free (address);
         g_object_unref (gaddress);
         break;
     }
@@ -381,6 +385,7 @@ static void
 g_inet_flow_table_finalize (GObject *object)
 {
     GInetFlowTable *table = G_INET_FLOW_TABLE (object);
+    g_list_free (table->list);
     g_hash_table_destroy (table->table);
     G_OBJECT_CLASS (g_inet_flow_table_parent_class)->finalize (object);
 }
@@ -437,7 +442,7 @@ g_inet_flow_table_class_init (GInetFlowTableClass *class)
 static void
 g_inet_flow_table_init (GInetFlowTable *table)
 {
-    table->table = g_hash_table_new_full ((GHashFunc) flow_hash, (GEqualFunc) flow_compare, NULL, NULL);
+    table->table = g_hash_table_new_full ((GHashFunc) flow_hash, (GEqualFunc) flow_compare, NULL, g_object_unref);
 }
 
 GInetFlowTable *
