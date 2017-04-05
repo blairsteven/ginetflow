@@ -187,6 +187,8 @@ print_flow (GInetFlow *flow, gpointer data)
     gchar *lip, *uip;
 #if defined(LIBNDPI_OLD_API) || defined(LIBNDPI_NEW_API)
     ndpi_context *ndpi = (ndpi_context *) g_object_get_data ((GObject *) flow, "ndpi");
+    char *proto = dpi ? ndpi_get_proto_name (module, ndpi->protocol) : "";
+    if (strcmp (proto, "Unknown") == 0) proto = "";
 #endif
 
     g_object_get (flow, "hash", &hash, "protocol", &protocol, NULL);
@@ -195,7 +197,7 @@ print_flow (GInetFlow *flow, gpointer data)
     g_printf ("0x%04x: %-16s %-16s %-2d %-5d %-5d %s\n",
             hash, lip, uip, protocol, lport, uport,
 #if defined(LIBNDPI_OLD_API) || defined(LIBNDPI_NEW_API)
-            dpi ? ndpi_get_proto_name (module, ndpi->protocol) :
+            dpi ? proto :
 #endif
             "");
     g_free (lip);
@@ -207,10 +209,13 @@ clean_flow (GInetFlow *flow, gpointer data)
 {
 #if defined(LIBNDPI_OLD_API) || defined(LIBNDPI_NEW_API)
     ndpi_context *ndpi = (ndpi_context *) g_object_get_data ((GObject *) flow, "ndpi");
-    ndpi_free_flow (ndpi->flow);
-    ndpi_free (ndpi->src);
-    ndpi_free (ndpi->dst);
-    free (ndpi);
+    if (ndpi)
+    {
+        ndpi_free_flow (ndpi->flow);
+        ndpi_free (ndpi->src);
+        ndpi_free (ndpi->dst);
+        free (ndpi);
+    }
 #endif
 }
 

@@ -151,7 +151,7 @@ flow_hash (GInetFlow *f)
     dst_crc = crc16 (dst_crc, ((guint64)f->tuple.upper_port) << 48);
     prot_crc = crc16 (prot_crc, ((guint64)f->tuple.protocol) << 56);
     f->hash = (src_crc ^ dst_crc ^ prot_crc);
-    g_printf (".");
+    g_printf ("%s", "");
     return f->hash;
 }
 
@@ -193,6 +193,27 @@ flow_parse_tcp (GInetFlow *f, const guint8 *data, guint32 length)
 }
 
 static gboolean
+flow_parse_udp (GInetFlow *f, const guint8 *data, guint32 length)
+{
+    udp_hdr_t *udp = (udp_hdr_t *) data;
+    if (length < sizeof (udp_hdr_t))
+        return FALSE;
+    guint16 sport = GUINT16_FROM_BE (udp->source);
+    guint16 dport = GUINT16_FROM_BE (udp->destination);
+    if (sport < dport)
+    {
+        f->tuple.lower_port= sport;
+        f->tuple.upper_port= dport;
+    }
+    else
+    {
+        f->tuple.upper_port= sport;
+        f->tuple.lower_port = dport;
+    }
+    return TRUE;
+}
+
+static gboolean
 flow_parse_ipv4 (GInetFlow *f, const guint8 *data, guint32 length)
 {
     ip_hdr_t *iph = (ip_hdr_t *) data;
@@ -218,7 +239,13 @@ flow_parse_ipv4 (GInetFlow *f, const guint8 *data, guint32 length)
                 return FALSE;
             break;
         case IP_PROTOCOL_UDP:
+            if (!flow_parse_udp (f, data + sizeof (ip_hdr_t), length - sizeof (ip_hdr_t)))
+                return FALSE;
+            break;
         case IP_PROTOCOL_ICMP:
+            f->tuple.lower_port= 0;
+            f->tuple.upper_port= 0;
+            break;
         default:
             return FALSE;
     }
