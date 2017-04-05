@@ -1,7 +1,7 @@
 /* GInetFlow - IP Flow Manager demo code
  * LD_LIBRARY_PATH=. ./demo -p test.pcap -w 8 -d
  *
- * Copyright (C) 2017 Active Telemetry
+ * Copyright (C) 2017 ECLB Ltd
  *
  * This library is free software; you can redistribute it and/or
  * modify it under the terms of the GNU Lesser General Public
