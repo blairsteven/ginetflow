@@ -88,6 +88,16 @@ typedef struct ip_hdr_t
     guint32 daddr;
 } __attribute__((packed)) ip_hdr_t;
 
+typedef struct ip6_hdr_t
+{
+    guint32 ver_tc_fl;
+    guint16 pay_len;
+    guint8 next_hdr;
+    guint8 hop_limit;
+    guint8 saddr[16];
+    guint8 daddr[16];
+} __attribute__((packed)) ip6_hdr_t;
+
 typedef struct tcp_hdr_t
 {
     guint16 source;
@@ -253,6 +263,43 @@ flow_parse_ipv4 (GInetFlow *f, const guint8 *data, guint32 length)
 }
 
 static gboolean
+flow_parse_ipv6 (GInetFlow *f, const guint8 *data, guint32 length)
+{
+    ip6_hdr_t *iph = (ip6_hdr_t *) data;
+    if (length < sizeof (ip6_hdr_t))
+        return FALSE;
+    if (memcmp (iph->saddr, iph->daddr, 16) < 0)
+    {
+        memcpy (f->tuple.lower_ip, iph->saddr, 16);
+        memcpy (f->tuple.upper_ip, iph->daddr, 16);
+    }
+    else
+    {
+        memcpy (f->tuple.upper_ip, iph->saddr, 16);
+        memcpy (f->tuple.lower_ip, iph->daddr, 16);
+    }
+    f->tuple.protocol = iph->next_hdr;
+    switch (iph->next_hdr)
+    {
+        case IP_PROTOCOL_TCP:
+            if (!flow_parse_tcp (f, data + sizeof (ip6_hdr_t), length - sizeof (ip6_hdr_t)))
+                return FALSE;
+            break;
+        case IP_PROTOCOL_UDP:
+            if (!flow_parse_udp (f, data + sizeof (ip6_hdr_t), length - sizeof (ip6_hdr_t)))
+                return FALSE;
+            break;
+        case IP_PROTOCOL_ICMP:
+            f->tuple.lower_port= 0;
+            f->tuple.upper_port= 0;
+            break;
+        default:
+            return FALSE;
+    }
+    return TRUE;
+}
+
+static gboolean
 flow_parse (GInetFlow *f, const guint8 *data, guint32 length, guint16 hash)
 {
     ethernet_hdr_t *e = (ethernet_hdr_t *) data;
@@ -265,6 +312,11 @@ flow_parse (GInetFlow *f, const guint8 *data, guint32 length, guint16 hash)
                 return FALSE;
             break;
         case ETH_PROTOCOL_IPV6:
+            f->family = G_SOCKET_FAMILY_IPV6;
+            f->hash = hash;
+            if (!flow_parse_ipv6 (f, data + sizeof (ethernet_hdr_t), length - sizeof (ethernet_hdr_t)))
+                return FALSE;
+            break;
         default:
             return FALSE;
     }
