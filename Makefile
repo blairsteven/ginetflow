@@ -7,34 +7,36 @@ PREFIX?=/usr/
 CC:=$(CROSS_COMPILE)gcc
 PKG_CONFIG ?= pkg-config
 
-CFLAGS += -fPIC -g -O2 -I.
-CFLAGS += `$(PKG_CONFIG) --cflags glib-2.0 gio-2.0`
-LDFLAGS += `$(PKG_CONFIG) --libs glib-2.0 gio-2.0`
+CFLAGS = -fPIC -g -O2
 
-EXTRA_LDFLAGS = -L. -lginetflow
+EXTRA_CFLAGS = `$(PKG_CONFIG) --cflags glib-2.0 gio-2.0` -I.
+EXTRA_LDFLAGS = `$(PKG_CONFIG) --libs glib-2.0 gio-2.0` 
+EXTRA_LDFLAGS += -lpcap -pthread
+
 NDPIVERSION := $(shell $(PKG_CONFIG) --atleast-version=1.7 libndpi && echo NEW || ($(PKG_CONFIG) --exists libndpi && echo OLD || echo NONE))
 ifneq ($(NDPIVERSION),NONE)
-EXTRA_CFLAGS += $(shell $(PKG_CONFIG) --cflags libndpi)
-EXTRA_CFLAGS += -DLIBNDPI_$(NDPIVERSION)_API
-EXTRA_LDFLAGS += $(shell $(PKG_CONFIG) --libs libndpi)
+DEMO_CFLAGS = $(CFLAGS) $(EXTRA_CFLAGS)
+DEMO_CFLAGS += $(shell $(PKG_CONFIG) --cflags libndpi)
+DEMO_CFLAGS += -DLIBNDPI_$(NDPIVERSION)_API
+DEMO_LDFLAGS = $(LDFLAGS) $(EXTRA_LDFLAGS) -L. -lginetflow
+DEMO_LDFLAGS += $(shell $(PKG_CONFIG) --libs libndpi)
 endif
-EXTRA_LDFLAGS += -lpcap -pthread
 
 LIBRARY = libginetflow.so
 
-all: $(LIBRARY) demo
+all: $(LIBRARY)
 
 $(LIBRARY): ginetflow.o
 	@echo "Building "$@""
-	$(Q)$(CC) -shared $(LDFLAGS) -o $@ $^
+	$(Q)$(CC) -shared $(LDFLAGS) $(EXTRA_LDFLAGS) -o $@ $^
 
 %.o: %.c
 	@echo "Compiling "$<""
-	$(Q)$(CC) $(CFLAGS) -c $< -o $@
+	$(Q)$(CC) $(CFLAGS) $(EXTRA_CFLAGS) -c $< -o $@
 
 demo: demo.c $(LIBRARY)
 	@echo "Compiling $@"
-	$(Q)$(CC) $(EXTRA_CFLAGS) $(CFLAGS) -o $@ $^ $(EXTRA_LDFLAGS) $(LDFLAGS)
+	$(Q)$(CC) $(DEMO_CFLAGS) -o $@ $^ $(DEMO_LDFLAGS)
 
 install: all
 	@install -d $(DESTDIR)/$(PREFIX)/lib
