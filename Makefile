@@ -6,6 +6,7 @@ DESTDIR?=
 PREFIX?=/usr/
 CC:=$(CROSS_COMPILE)gcc
 PKG_CONFIG ?= pkg-config
+GREP = grep --line-buffered --color=always
 
 CFLAGS = -fPIC -g -O2
 
@@ -20,6 +21,22 @@ DEMO_CFLAGS += $(shell $(PKG_CONFIG) --cflags libndpi)
 DEMO_CFLAGS += -DLIBNDPI_$(NDPIVERSION)_API
 DEMO_LDFLAGS = $(LDFLAGS) $(EXTRA_LDFLAGS) -L. -lginetflow
 DEMO_LDFLAGS += $(shell $(PKG_CONFIG) --libs libndpi) -lpcap
+endif
+
+NP_CFLAGS += $(CFLAGS) $(EXTRA_CFLAGS)
+NP_LDFLAGS += $(LDFLAGS) $(EXTRA_LDFLAGS)
+
+NOVAPROVA := $(shell $(PKG_CONFIG) --atleast-version=1.4 novaprova && echo yes || echo no)
+ifeq ($(NOVAPROVA),yes)
+NOVAPROVA_CFLAGS= $(CFLAGS) $(EXTRA_CFLAGS) `$(PKG_CONFIG) --cflags novaprova`
+NOVAPROVA_LIBS := $(LDFLAGS) $(EXTRA_LDFLAGS) `$(PKG_CONFIG) --libs novaprova`
+FORMAT_RESULTS = $(GREP) -v "^np: running" $(COLOR_RESULTS)
+COLOR_RESULTS = | $(GREP) -E 'FAIL|$$' | GREP_COLOR='01;32' $(GREP) -E 'PASS|$$'
+ifndef NOVAPROVA_VALGRIND
+ifeq ($(VALGRIND),no)
+export NOVAPROVA_VALGRIND=no
+endif
+endif
 endif
 
 LIBRARY = libginetflow.so
@@ -38,6 +55,11 @@ demo: demo.c $(LIBRARY)
 	@echo "Compiling $@"
 	$(Q)$(CC) $(DEMO_CFLAGS) -o $@ $^ $(DEMO_LDFLAGS)
 
+test: test.c
+	@echo "Building $@"
+	$(Q)$(CC) -g -fprofile-arcs -ftest-coverage $(NOVAPROVA_CFLAGS) -o $@ $< $(NOVAPROVA_LIBS)
+	$(Q)G_SLICE=always-malloc ./test $(TESTSPEC) 2>&1 | $(FORMAT_RESULTS)
+
 install: all
 	@install -d $(DESTDIR)/$(PREFIX)/lib
 	@install -D $(LIBRARY) $(DESTDIR)/$(PREFIX)/lib/
@@ -50,4 +72,4 @@ clean:
 	@echo "Cleaning..."
 	@rm -f $(LIBRARY) *.o demo
 
-.PHONY: all clean
+.PHONY: all clean test

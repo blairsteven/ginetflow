@@ -23,6 +23,9 @@
 #include <gio/gio.h>
 #include "ginetflow.h"
 
+#define DEBUG(fmt, args...)
+//#define DEBUG(fmt, args...) {g_printf("%s: ",__func__);g_printf (fmt, ## args);}
+
 /** GInetFlow */
 struct _GInetFlow
 {
@@ -314,6 +317,16 @@ flow_parse (GInetFlow *f, const guint8 *data, guint32 length, guint16 hash)
     guint16 type;
     int tags = 0;
 
+    if (!f || !data || !length) {
+        DEBUG("Invalid parameters: f:%p data:%p length:%u\n", f, data, length);
+        return FALSE;
+    }
+
+    if (length < sizeof(ethernet_hdr_t)) {
+        DEBUG("Frame too short: %u\n", length);
+        return FALSE;
+    }
+
     e = (ethernet_hdr_t *) data;
     data += sizeof(ethernet_hdr_t);
     length -= sizeof(ethernet_hdr_t);
@@ -325,6 +338,8 @@ try_again:
         case ETH_PROTOCOL_8021AD:
             tags++;
             if (tags > 2)
+                return FALSE;
+            if (length < sizeof(vlan_hdr_t))
                 return FALSE;
             v = (vlan_hdr_t *) data;
             type = GUINT16_FROM_BE(v->protocol);
@@ -344,6 +359,7 @@ try_again:
                 return FALSE;
             break;
         default:
+            DEBUG("Unsupported ethernet protocol: 0x%04x\n", type);
             return FALSE;
     }
     return TRUE;
