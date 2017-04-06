@@ -23,13 +23,10 @@ DEMO_LDFLAGS = $(LDFLAGS) $(EXTRA_LDFLAGS) -L. -lginetflow
 DEMO_LDFLAGS += $(shell $(PKG_CONFIG) --libs libndpi) -lpcap
 endif
 
-NP_CFLAGS += $(CFLAGS) $(EXTRA_CFLAGS)
-NP_LDFLAGS += $(LDFLAGS) $(EXTRA_LDFLAGS)
-
 NOVAPROVA := $(shell $(PKG_CONFIG) --atleast-version=1.4 novaprova && echo yes || echo no)
 ifeq ($(NOVAPROVA),yes)
 NOVAPROVA_CFLAGS= $(CFLAGS) $(EXTRA_CFLAGS) `$(PKG_CONFIG) --cflags novaprova`
-NOVAPROVA_LIBS := $(LDFLAGS) $(EXTRA_LDFLAGS) `$(PKG_CONFIG) --libs novaprova`
+NOVAPROVA_LIBS := $(LDFLAGS) `$(PKG_CONFIG) --libs novaprova` $(EXTRA_LDFLAGS) -lz -liberty
 FORMAT_RESULTS = $(GREP) -v "^np: running" $(COLOR_RESULTS)
 COLOR_RESULTS = | $(GREP) -E 'FAIL|$$' | GREP_COLOR='01;32' $(GREP) -E 'PASS|$$'
 ifndef NOVAPROVA_VALGRIND
