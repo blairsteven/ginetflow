@@ -334,13 +334,13 @@ try_again:
         case ETH_PROTOCOL_IP:
             f->family = G_SOCKET_FAMILY_IPV4;
             f->hash = hash;
-            if (!flow_parse_ipv4 (f, data + sizeof (ethernet_hdr_t), length - sizeof (ethernet_hdr_t)))
+            if (!flow_parse_ipv4 (f, data, length))
                 return FALSE;
             break;
         case ETH_PROTOCOL_IPV6:
             f->family = G_SOCKET_FAMILY_IPV6;
             f->hash = hash;
-            if (!flow_parse_ipv6 (f, data + sizeof (ethernet_hdr_t), length - sizeof (ethernet_hdr_t)))
+            if (!flow_parse_ipv6 (f, data, length))
                 return FALSE;
             break;
         default:
