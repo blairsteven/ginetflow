@@ -11,7 +11,7 @@ CFLAGS = -fPIC -g -O2
 
 EXTRA_CFLAGS = `$(PKG_CONFIG) --cflags glib-2.0 gio-2.0` -I.
 EXTRA_LDFLAGS = `$(PKG_CONFIG) --libs glib-2.0 gio-2.0` 
-EXTRA_LDFLAGS += -lpcap -pthread
+EXTRA_LDFLAGS += -pthread
 
 NDPIVERSION := $(shell $(PKG_CONFIG) --atleast-version=1.7 libndpi && echo NEW || ($(PKG_CONFIG) --exists libndpi && echo OLD || echo NONE))
 ifneq ($(NDPIVERSION),NONE)
@@ -19,7 +19,7 @@ DEMO_CFLAGS = $(CFLAGS) $(EXTRA_CFLAGS)
 DEMO_CFLAGS += $(shell $(PKG_CONFIG) --cflags libndpi)
 DEMO_CFLAGS += -DLIBNDPI_$(NDPIVERSION)_API
 DEMO_LDFLAGS = $(LDFLAGS) $(EXTRA_LDFLAGS) -L. -lginetflow
-DEMO_LDFLAGS += $(shell $(PKG_CONFIG) --libs libndpi)
+DEMO_LDFLAGS += $(shell $(PKG_CONFIG) --libs libndpi) -lpcap
 endif
 
 LIBRARY = libginetflow.so
