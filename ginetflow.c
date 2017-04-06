@@ -62,6 +62,8 @@ struct _GInetFlowTableClass
 G_DEFINE_TYPE (GInetFlowTable, g_inet_flow_table, G_TYPE_OBJECT);
 
 /* Packet */
+#define ETH_PROTOCOL_8021Q      0x8100
+#define ETH_PROTOCOL_8021AD     0x88A8
 #define ETH_PROTOCOL_IP         0x0800
 #define ETH_PROTOCOL_IPV6       0x86DD
 typedef struct ethernet_hdr_t
@@ -70,6 +72,11 @@ typedef struct ethernet_hdr_t
     guint8 source[6];
     guint16 protocol;
 } __attribute__((packed)) ethernet_hdr_t;
+
+typedef struct vlan_hdr_t {
+    guint16  tci;
+    guint16  protocol;
+} __attribute__((packed)) vlan_hdr_t;
 
 #define IP_PROTOCOL_ICMP        1
 #define IP_PROTOCOL_TCP         6
@@ -302,9 +309,28 @@ flow_parse_ipv6 (GInetFlow *f, const guint8 *data, guint32 length)
 static gboolean
 flow_parse (GInetFlow *f, const guint8 *data, guint32 length, guint16 hash)
 {
-    ethernet_hdr_t *e = (ethernet_hdr_t *) data;
-    switch (GUINT16_FROM_BE (e->protocol))
+    ethernet_hdr_t *e;
+    vlan_hdr_t *v;
+    guint16 type;
+    int tags = 0;
+
+    e = (ethernet_hdr_t *) data;
+    data += sizeof(ethernet_hdr_t);
+    length -= sizeof(ethernet_hdr_t);
+    type = GUINT16_FROM_BE(e->protocol);
+try_again:
+    switch (type)
     {
+        case ETH_PROTOCOL_8021Q:
+        case ETH_PROTOCOL_8021AD:
+            tags++;
+            if (tags > 2)
+                return FALSE;
+            v = (vlan_hdr_t *) data;
+            type = GUINT16_FROM_BE(v->protocol);
+            data += sizeof(vlan_hdr_t);
+            length -= sizeof(vlan_hdr_t);
+            goto try_again;
         case ETH_PROTOCOL_IP:
             f->family = G_SOCKET_FAMILY_IPV4;
             f->hash = hash;
