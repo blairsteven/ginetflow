@@ -502,6 +502,25 @@ g_inet_flow_get (GInetFlowTable *table, const guint8 *frame, guint length)
     return g_inet_flow_get_full (table, frame, length, 0, 0);
 }
 
+GInetFlow *
+g_inet_flow_expire (GInetFlowTable *table, guint64 ts)
+{
+    GList *iter;
+
+    for (iter = g_list_first (table->list); iter; iter = g_list_next (iter))
+    {
+        GInetFlow *flow = (GInetFlow *) iter->data;
+        guint64 timeout = (G_INET_FLOW_DEFAULT_NEW_TIMEOUT * 1000000);
+        if (flow->timestamp + timeout <= ts)
+        {
+            table->list = g_list_remove (table->list, flow);
+            g_hash_table_remove (table->table, (gpointer) flow);
+            return flow;
+        }
+    }
+    return NULL;
+}
+
 static void
 g_inet_flow_table_finalize (GObject *object)
 {

@@ -29,6 +29,11 @@ NOVAPROVA_CFLAGS= $(CFLAGS) $(EXTRA_CFLAGS) `$(PKG_CONFIG) --cflags novaprova`
 NOVAPROVA_LIBS := $(LDFLAGS) `$(PKG_CONFIG) --libs novaprova` $(EXTRA_LDFLAGS) -lz -liberty
 FORMAT_RESULTS = $(GREP) -v "^np: running" $(COLOR_RESULTS)
 COLOR_RESULTS = | $(GREP) -E 'FAIL|$$' | GREP_COLOR='01;32' $(GREP) -E 'PASS|$$'
+ifeq (test, $(firstword $(MAKECMDGOALS)))
+ifneq ($(word 2, $(MAKECMDGOALS)),)
+TESTSPEC = test.$(word 2, $(MAKECMDGOALS))
+endif
+endif
 ifndef NOVAPROVA_VALGRIND
 ifeq ($(VALGRIND),no)
 export NOVAPROVA_VALGRIND=no
@@ -54,8 +59,12 @@ demo: demo.c $(LIBRARY)
 
 test: test.c
 	@echo "Building $@"
-	$(Q)$(CC) -g -fprofile-arcs -ftest-coverage $(NOVAPROVA_CFLAGS) -o $@ $< $(NOVAPROVA_LIBS)
+	$(Q)mkdir -p gcov
+	$(Q)$(CC) -g -fprofile-arcs -fprofile-dir=gcov -ftest-coverage $(NOVAPROVA_CFLAGS) -o $@ $< $(NOVAPROVA_LIBS)
 	$(Q)G_SLICE=always-malloc ./test $(TESTSPEC) 2>&1 | $(FORMAT_RESULTS)
+	$(Q)mv *.gcno gcov/
+	$(Q)lcov -q --capture --directory . --output-file gcov/coverage.info
+	$(Q)genhtml -q gcov/coverage.info --output-directory gcov
 
 install: all
 	@install -d $(DESTDIR)/$(PREFIX)/lib
@@ -67,6 +76,6 @@ install: all
 
 clean:
 	@echo "Cleaning..."
-	@rm -f $(LIBRARY) *.o demo
+	@rm -fr $(LIBRARY) *.o demo test gcov
 
 .PHONY: all clean test

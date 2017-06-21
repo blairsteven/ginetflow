@@ -32,10 +32,13 @@ typedef struct _GInetFlowTable      GInetFlowTable;
 typedef struct _GInetFlowTableClass GInetFlowTableClass;
 #define G_INET_FLOW_TABLE(o)        (G_TYPE_CHECK_INSTANCE_CAST ((o), G_INET_TYPE_FLOW_TABLE, GInetFlowTable))
 
+#define G_INET_FLOW_DEFAULT_NEW_TIMEOUT         30
+
 GInetFlowTable* g_inet_flow_table_new (void);
 GInetFlow* g_inet_flow_get (GInetFlowTable *table, const guint8 *frame, guint length);
 GInetFlow* g_inet_flow_get_full (GInetFlowTable *table, const guint8 *frame, guint length,
         guint16 hash, guint64 timestamp);
+GInetFlow *g_inet_flow_expire (GInetFlowTable *table, guint64 ts);
 
 typedef void (*GIFFunc) (GInetFlow *flow, gpointer user_data);
 void g_inet_flow_foreach (GInetFlowTable *table, GIFFunc func, gpointer user_data);
