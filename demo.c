@@ -133,7 +133,7 @@ worker_func (gpointer a, gpointer b)
 static void
 process_frame (const uint8_t *frame, uint32_t length)
 {
-    GInetFlow *flow = g_inet_flow_get (table, frame, length);
+    GInetFlow *flow = g_inet_flow_get_full (table, frame, length, 0, 0, TRUE);
     if (flow)
     {
         guint hash = 0;
@@ -184,6 +184,7 @@ static void
 print_flow (GInetFlow *flow, gpointer data)
 {
     guint state, hash, protocol, lport, uport;
+    guint64 packets;
     gchar *lip, *uip;
 #if defined(LIBNDPI_OLD_API) || defined(LIBNDPI_NEW_API)
     ndpi_context *ndpi = (ndpi_context *) g_object_get_data ((GObject *) flow, "ndpi");
@@ -191,14 +192,15 @@ print_flow (GInetFlow *flow, gpointer data)
     if (strcmp (proto, "Unknown") == 0) proto = "";
 #endif
 
+    g_object_get (flow, "packets", &packets, NULL);
     g_object_get (flow, "state", &state, NULL);
     g_object_get (flow, "hash", &hash, "protocol", &protocol, NULL);
     g_object_get (flow, "lport", &lport, "uport", &uport, NULL);
     g_object_get (flow, "lip", &lip, "uip", &uip, NULL);
-    g_printf ("0x%04x: %-16s %-16s %-2d %-5d %-5d  %s %s\n",
-            hash, lip, uip, protocol, lport, uport,
+    g_printf ("0x%04x: %-16s %-16s %-2d %-5d %-5d  %-5zu %s %s\n",
+            hash, lip, uip, protocol, lport, uport, packets,
             state == FLOW_NEW ? "NEW   " :
-                (state == FLOW_ESTABLISHED ? "OPEN  " : "CLOSED"),
+                (state == FLOW_OPEN ? "OPEN  " : "CLOSED"),
 #if defined(LIBNDPI_OLD_API) || defined(LIBNDPI_NEW_API)
             dpi ? proto :
 #endif
@@ -307,6 +309,7 @@ main (int argc, char **argv)
     for (i=0; i<nworkers; i++)
         g_printf (" %d:%d", i, processed[i]);
     g_printf ("\n");
+    g_printf ("Hash    lip              uip            prot lport uport  pkts  state  app\n");
     g_inet_flow_foreach (table, (GIFFunc) print_flow, NULL);
     g_inet_flow_foreach (table, (GIFFunc) clean_flow, NULL);
     g_object_unref (table);

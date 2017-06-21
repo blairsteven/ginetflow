@@ -31,6 +31,7 @@ struct _GInetFlow
 {
     GObject parent;
     guint64 timestamp;
+    guint64 packets;
     GInetFlowState state;
     guint family;
     guint16 hash;
@@ -375,6 +376,7 @@ g_inet_flow_finalize (GObject *object)
 enum
 {
     FLOW_STATE = 1,
+    FLOW_PACKETS,
     FLOW_HASH,
     FLOW_PROTOCOL,
     FLOW_LPORT,
@@ -392,6 +394,9 @@ g_inet_flow_get_property (GObject *object,
     {
     case FLOW_STATE:
         g_value_set_uint (value, flow->state);
+        break;
+    case FLOW_PACKETS:
+        g_value_set_uint64 (value, flow->packets);
         break;
     case FLOW_HASH:
         g_value_set_uint (value, flow->hash);
@@ -440,22 +445,26 @@ g_inet_flow_class_init (GInetFlowClass *class)
         g_param_spec_uint ("state", "State",
                 "State of the flow",
                 FLOW_NEW, FLOW_CLOSED, 0, G_PARAM_READABLE));
+    g_object_class_install_property (object_class, FLOW_PACKETS,
+        g_param_spec_uint64 ("packets", "Packets",
+                "Number of packets seen",
+                0, G_MAXUINT64, 0, G_PARAM_READABLE));
     g_object_class_install_property (object_class, FLOW_HASH,
         g_param_spec_uint ("hash", "Hash",
                 "Tuple hash for the flow",
-                0, 65535, 0, G_PARAM_READABLE));
+                0, G_MAXUINT16, 0, G_PARAM_READABLE));
     g_object_class_install_property (object_class, FLOW_PROTOCOL,
         g_param_spec_uint ("protocol", "Protocol",
                 "IP Protocol for the flow",
-                0, 65535, 0, G_PARAM_READABLE));
+                0, G_MAXUINT16, 0, G_PARAM_READABLE));
     g_object_class_install_property (object_class, FLOW_LPORT,
         g_param_spec_uint ("lport", "LPort",
                 "Lower L4 port (smaller value)",
-                0, 65535, 0, G_PARAM_READABLE));
+                0, G_MAXUINT16, 0, G_PARAM_READABLE));
     g_object_class_install_property (object_class, FLOW_UPORT,
         g_param_spec_uint ("uport", "UPort",
                 "Upper L4 port (larger value)",
-                0, 65535, 0, G_PARAM_READABLE));
+                0, G_MAXUINT16, 0, G_PARAM_READABLE));
     g_object_class_install_property (object_class, FLOW_LIP,
         g_param_spec_string ("lip", "LIP",
                 "Lower IP address (smaller value)",
@@ -506,7 +515,10 @@ g_inet_flow_get_full (GInetFlowTable *table, const guint8 *frame, guint length,
         table->misses++;
     }
     if (update)
+    {
         flow->timestamp = timestamp ?: get_time_us ();
+        flow->packets++;
+    }
     return flow;
 }
 
