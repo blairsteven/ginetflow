@@ -31,6 +31,7 @@ struct _GInetFlow
 {
     GObject parent;
     guint64 timestamp;
+    GInetFlowState state;
     guint family;
     guint16 hash;
     struct
@@ -373,7 +374,8 @@ g_inet_flow_finalize (GObject *object)
 
 enum
 {
-    FLOW_HASH = 1,
+    FLOW_STATE = 1,
+    FLOW_HASH,
     FLOW_PROTOCOL,
     FLOW_LPORT,
     FLOW_UPORT,
@@ -388,6 +390,9 @@ g_inet_flow_get_property (GObject *object,
     GInetFlow *flow = G_INET_FLOW (object);
     switch (prop_id)
     {
+    case FLOW_STATE:
+        g_value_set_uint (value, flow->state);
+        break;
     case FLOW_HASH:
         g_value_set_uint (value, flow->hash);
         break;
@@ -431,6 +436,10 @@ g_inet_flow_class_init (GInetFlowClass *class)
 {
     GObjectClass *object_class = G_OBJECT_CLASS (class);
     object_class->get_property = g_inet_flow_get_property;
+    g_object_class_install_property (object_class, FLOW_STATE,
+        g_param_spec_uint ("state", "State",
+                "State of the flow",
+                FLOW_NEW, FLOW_CLOSED, 0, G_PARAM_READABLE));
     g_object_class_install_property (object_class, FLOW_HASH,
         g_param_spec_uint ("hash", "Hash",
                 "Tuple hash for the flow",
@@ -461,11 +470,12 @@ g_inet_flow_class_init (GInetFlowClass *class)
 static void
 g_inet_flow_init (GInetFlow *flow)
 {
+    flow->state = FLOW_NEW;
 }
 
 GInetFlow *
 g_inet_flow_get_full (GInetFlowTable *table, const guint8 *frame, guint length,
-        guint16 hash, guint64 timestamp)
+        guint16 hash, guint64 timestamp, gboolean update)
 {
     GInetFlow packet = {};
     GInetFlow *flow;
@@ -478,8 +488,11 @@ g_inet_flow_get_full (GInetFlowTable *table, const guint8 *frame, guint length,
     flow = (GInetFlow *) g_hash_table_lookup (table->table, &packet);
     if (flow)
     {
-        table->list = g_list_remove (table->list, flow);
-        table->list = g_list_prepend (table->list, flow);
+        if (update)
+        {
+            table->list = g_list_remove (table->list, flow);
+            table->list = g_list_prepend (table->list, flow);
+        }
         table->hits++;
     }
     else
@@ -492,14 +505,15 @@ g_inet_flow_get_full (GInetFlowTable *table, const guint8 *frame, guint length,
         table->list = g_list_prepend (table->list, flow);
         table->misses++;
     }
-    flow->timestamp = timestamp ?: get_time_us ();
+    if (update)
+        flow->timestamp = timestamp ?: get_time_us ();
     return flow;
 }
 
 GInetFlow *
 g_inet_flow_get (GInetFlowTable *table, const guint8 *frame, guint length)
 {
-    return g_inet_flow_get_full (table, frame, length, 0, 0);
+    return g_inet_flow_get_full (table, frame, length, 0, 0, FALSE);
 }
 
 GInetFlow *

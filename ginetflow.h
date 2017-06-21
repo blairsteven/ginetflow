@@ -32,12 +32,22 @@ typedef struct _GInetFlowTable      GInetFlowTable;
 typedef struct _GInetFlowTableClass GInetFlowTableClass;
 #define G_INET_FLOW_TABLE(o)        (G_TYPE_CHECK_INSTANCE_CAST ((o), G_INET_TYPE_FLOW_TABLE, GInetFlowTable))
 
+/* Flow states */
+typedef enum {
+    FLOW_NEW,
+    FLOW_ESTABLISHED,
+    FLOW_CLOSED,
+} GInetFlowState;
+
+/* Default timeouts */
 #define G_INET_FLOW_DEFAULT_NEW_TIMEOUT         30
+#define G_INET_FLOW_DEFAULT_ESTABLISHED_TIMEOUT 300
+#define G_INET_FLOW_DEFAULT_CLOSED_TIMEOUT      0
 
 GInetFlowTable* g_inet_flow_table_new (void);
 GInetFlow* g_inet_flow_get (GInetFlowTable *table, const guint8 *frame, guint length);
 GInetFlow* g_inet_flow_get_full (GInetFlowTable *table, const guint8 *frame, guint length,
-        guint16 hash, guint64 timestamp);
+        guint16 hash, guint64 timestamp, gboolean update);
 GInetFlow *g_inet_flow_expire (GInetFlowTable *table, guint64 ts);
 
 typedef void (*GIFFunc) (GInetFlow *flow, gpointer user_data);

@@ -82,7 +82,7 @@ void test_flow_create()
     guint64 now = get_time_us ();
     setup_test();
     NP_ASSERT_NOT_NULL (table);
-    GInetFlow *flow = g_inet_flow_get_full (table, test_buffer, pkt_udp(test_buffer), 0, now);
+    GInetFlow *flow = g_inet_flow_get_full (table, test_buffer, pkt_udp(test_buffer), 0, now, TRUE);
     NP_ASSERT_NOT_NULL (flow);
     guint64 size;
     g_object_get (table, "size", &size, NULL);
@@ -99,7 +99,7 @@ void test_flow_not_expired()
 
     setup_test();
     NP_ASSERT_NOT_NULL ((table = g_inet_flow_table_new ()));
-    NP_ASSERT_NOT_NULL ((flow = g_inet_flow_get_full (table, test_buffer, pkt_udp(test_buffer), 0, now)));
+    NP_ASSERT_NOT_NULL ((flow = g_inet_flow_get_full (table, test_buffer, pkt_udp(test_buffer), 0, now, TRUE)));
     NP_ASSERT_NULL (g_inet_flow_expire (table, now + (G_INET_FLOW_DEFAULT_NEW_TIMEOUT * 1000000) - 1));
     g_object_get (table, "size", &size, NULL);
     NP_ASSERT_EQUAL (size, 1);
@@ -115,7 +115,7 @@ void test_flow_expired()
 
     setup_test();
     NP_ASSERT_NOT_NULL ((table = g_inet_flow_table_new ()));
-    NP_ASSERT_NOT_NULL ((flow = g_inet_flow_get_full (table, test_buffer, pkt_udp(test_buffer), 0, now)));
+    NP_ASSERT_NOT_NULL ((flow = g_inet_flow_get_full (table, test_buffer, pkt_udp(test_buffer), 0, now, TRUE)));
     NP_ASSERT_NOT_NULL (g_inet_flow_expire (table, now + (G_INET_FLOW_DEFAULT_NEW_TIMEOUT * 1000000)));
     g_object_get (table, "size", &size, NULL);
     NP_ASSERT_EQUAL (size, 0);

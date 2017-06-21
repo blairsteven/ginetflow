@@ -183,7 +183,7 @@ process_pcap (const char *filename)
 static void
 print_flow (GInetFlow *flow, gpointer data)
 {
-    guint hash, protocol, lport, uport;
+    guint state, hash, protocol, lport, uport;
     gchar *lip, *uip;
 #if defined(LIBNDPI_OLD_API) || defined(LIBNDPI_NEW_API)
     ndpi_context *ndpi = (ndpi_context *) g_object_get_data ((GObject *) flow, "ndpi");
@@ -191,11 +191,14 @@ print_flow (GInetFlow *flow, gpointer data)
     if (strcmp (proto, "Unknown") == 0) proto = "";
 #endif
 
+    g_object_get (flow, "state", &state, NULL);
     g_object_get (flow, "hash", &hash, "protocol", &protocol, NULL);
     g_object_get (flow, "lport", &lport, "uport", &uport, NULL);
     g_object_get (flow, "lip", &lip, "uip", &uip, NULL);
-    g_printf ("0x%04x: %-16s %-16s %-2d %-5d %-5d %s\n",
+    g_printf ("0x%04x: %-16s %-16s %-2d %-5d %-5d  %s %s\n",
             hash, lip, uip, protocol, lport, uport,
+            state == FLOW_NEW ? "NEW   " :
+                (state == FLOW_ESTABLISHED ? "OPEN  " : "CLOSED"),
 #if defined(LIBNDPI_OLD_API) || defined(LIBNDPI_NEW_API)
             dpi ? proto :
 #endif
