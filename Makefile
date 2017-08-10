@@ -66,6 +66,10 @@ test: test.c
 	$(Q)lcov -q --capture --directory . --output-file gcov/coverage.info
 	$(Q)genhtml -q gcov/coverage.info --output-directory gcov
 
+indent:
+	indent -kr -nut -l92 *.c *.h
+	rm *.c~ *.h~
+
 install: all
 	@install -d $(DESTDIR)/$(PREFIX)/lib
 	@install -D $(LIBRARY) $(DESTDIR)/$(PREFIX)/lib/

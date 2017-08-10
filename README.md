@@ -8,6 +8,15 @@ make
 make install
 ```
 
+# Develop
+```
+make demo
+make indent
+make test
+make test VALGRIND=no
+google-chrome gcov/index.html
+```
+
 # Demo
 ```
 Usage:

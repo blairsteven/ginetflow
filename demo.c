@@ -35,7 +35,8 @@ static gchar *filename = NULL;
 static gboolean verbose = FALSE;
 
 static GThreadPool *workers[MAX_WORKERS];
-static gint processed[MAX_WORKERS] = {};
+static gint processed[MAX_WORKERS] = { };
+
 static gint frames = 0;
 static GInetFlowTable *table = NULL;
 
@@ -51,22 +52,20 @@ typedef struct {
     bool done;
 } ndpi_context;
 
-static void
-ndpi_debug_function (u_int32_t protocol, void *module_struct,
-                     ndpi_log_level_t log_level, const char *format, ...)
+static void ndpi_debug_function(u_int32_t protocol, void *module_struct,
+                                ndpi_log_level_t log_level, const char *format, ...)
 {
     va_list args;
-    va_start (args, format);
-    vprintf (format, args);
-    va_end (args);
+    va_start(args, format);
+    vprintf(format, args);
+    va_end(args);
 }
 
-static void
-analyse_frame (GInetFlow *flow, const uint8_t *frame, uint32_t length)
+static void analyse_frame(GInetFlow * flow, const uint8_t * frame, uint32_t length)
 {
     ndpi_context *ndpi;
-    ndpi = (ndpi_context *) g_object_get_data ((GObject *) flow, "ndpi");
-    const unsigned char *iph = frame + 14; //TODO
+    ndpi = (ndpi_context *) g_object_get_data((GObject *) flow, "ndpi");
+    const unsigned char *iph = frame + 14;      //TODO
     const unsigned short ipsize = length - 14;
     const u_int64_t time = 0;
 #ifdef LIBNDPI_NEW_API
@@ -75,21 +74,19 @@ analyse_frame (GInetFlow *flow, const uint8_t *frame, uint32_t length)
     u_int16_t protocol;
 #endif
 
-    if (!ndpi)
-    {
-        ndpi = calloc (1, sizeof (ndpi_context));
-        ndpi->flow = ndpi_calloc (1, flow_size);
-        ndpi->src = ndpi_calloc (1, id_size);
-        ndpi->dst = ndpi_calloc (1, id_size);
-        g_object_set_data ((GObject *) flow, "ndpi", (gpointer) ndpi);
-    }
-    else if (ndpi->done)
-    {
+    if (!ndpi) {
+        ndpi = calloc(1, sizeof(ndpi_context));
+        ndpi->flow = ndpi_calloc(1, flow_size);
+        ndpi->src = ndpi_calloc(1, id_size);
+        ndpi->dst = ndpi_calloc(1, id_size);
+        g_object_set_data((GObject *) flow, "ndpi", (gpointer) ndpi);
+    } else if (ndpi->done) {
         return;
     }
 
-    protocol = ndpi_detection_process_packet (module,
-            ndpi->flow, iph, ipsize, time, ndpi->src, ndpi->dst);
+    protocol =
+        ndpi_detection_process_packet(module, ndpi->flow, iph, ipsize, time,
+                                      ndpi->src, ndpi->dst);
 #ifdef LIBNDPI_NEW_API
     ndpi->protocol = protocol.protocol;
 #else
@@ -97,226 +94,201 @@ analyse_frame (GInetFlow *flow, const uint8_t *frame, uint32_t length)
 #endif
     if ((ndpi->protocol != NDPI_PROTOCOL_UNKNOWN)
         /*|| ((proto == IPPROTO_UDP) && (flow->packets > 8))
-        || ((proto == IPPROTO_TCP) && (flow->packets > 10))*/)
-    {
+           || ((proto == IPPROTO_TCP) && (flow->packets > 10)) */
+        ) {
         ndpi->done = 1;
     }
 
     if (verbose)
-        g_print ("Protocol: %s(%d)\n",
-           ndpi_get_proto_name (module, ndpi->protocol),
-           ndpi->protocol);
+        g_print("Protocol: %s(%d)\n",
+                ndpi_get_proto_name(module, ndpi->protocol), ndpi->protocol);
 }
 #endif
 
-typedef struct Job
-{
+typedef struct Job {
     GInetFlow *flow;
     uint8_t *frame;
     uint32_t length;
 } Job;
 
-static void
-worker_func (gpointer a, gpointer b)
+static void worker_func(gpointer a, gpointer b)
 {
     Job *job = (Job *) a;
-    int id = GPOINTER_TO_INT (b);
+    int id = GPOINTER_TO_INT(b);
 #if defined(LIBNDPI_OLD_API) || defined(LIBNDPI_NEW_API)
     if (dpi)
-        analyse_frame (job->flow, job->frame, job->length);
+        analyse_frame(job->flow, job->frame, job->length);
 #endif
     processed[id]++;
-    free (job->frame);
-    free (job);
+    free(job->frame);
+    free(job);
 }
 
-static void
-process_frame (const uint8_t *frame, uint32_t length)
+static void process_frame(const uint8_t * frame, uint32_t length)
 {
-    GInetFlow *flow = g_inet_flow_get_full (table, frame, length, 0, 0, TRUE);
-    if (flow)
-    {
+    GInetFlow *flow = g_inet_flow_get_full(table, frame, length, 0, 0, TRUE);
+    if (flow) {
         guint hash = 0;
-        Job *job = calloc (1, sizeof (Job));
+        Job *job = calloc(1, sizeof(Job));
         job->flow = flow;
-        job->frame = malloc (length);
-        memcpy (job->frame, frame, length);
+        job->frame = malloc(length);
+        memcpy(job->frame, frame, length);
         job->length = length;
-        g_object_get (flow, "hash", &hash, NULL);
-        g_thread_pool_push (workers[hash % nworkers], (gpointer) job, NULL);
+        g_object_get(flow, "hash", &hash, NULL);
+        g_thread_pool_push(workers[hash % nworkers], (gpointer) job, NULL);
         frames++;
     }
     return;
 }
 
-static void
-process_pcap (const char *filename)
+static void process_pcap(const char *filename)
 {
     char error_pcap[PCAP_ERRBUF_SIZE];
     pcap_t *pcap;
     const uint8_t *frame;
     struct pcap_pkthdr hdr;
 
-    pcap = pcap_open_offline (filename, error_pcap);
-    if (pcap == NULL)
-    {
-        g_printf ("Invalid pcap file: %s\n", filename);
+    pcap = pcap_open_offline(filename, error_pcap);
+    if (pcap == NULL) {
+        g_printf("Invalid pcap file: %s\n", filename);
         return;
     }
 
-    g_printf ("Reading \"%s\"\n", filename);
-    while ((frame = pcap_next (pcap, &hdr)) != NULL)
-    {
-        process_frame (frame, hdr.caplen);
+    g_printf("Reading \"%s\"\n", filename);
+    while ((frame = pcap_next(pcap, &hdr)) != NULL) {
+        process_frame(frame, hdr.caplen);
     }
-    pcap_close (pcap);
+    pcap_close(pcap);
 
     guint64 size, misses, hits;
-    g_object_get (table, "size", &size, "misses", &misses, "hits", &hits, NULL);
-    g_printf ("\nProcessed %d frames,"
-            " %"G_GUINT64_FORMAT" misses,"
-            " %"G_GUINT64_FORMAT" hits,"
-            " %"G_GUINT64_FORMAT" flows\n",
-            frames, misses, hits, size);
+    g_object_get(table, "size", &size, "misses", &misses, "hits", &hits, NULL);
+    g_printf("\nProcessed %d frames," " %" G_GUINT64_FORMAT " misses,"
+             " %" G_GUINT64_FORMAT " hits," " %" G_GUINT64_FORMAT " flows\n",
+             frames, misses, hits, size);
 }
 
-static void
-print_flow (GInetFlow *flow, gpointer data)
+static void print_flow(GInetFlow * flow, gpointer data)
 {
     guint state, hash, protocol, lport, uport;
     guint64 packets;
     gchar *lip, *uip;
 #if defined(LIBNDPI_OLD_API) || defined(LIBNDPI_NEW_API)
-    ndpi_context *ndpi = (ndpi_context *) g_object_get_data ((GObject *) flow, "ndpi");
-    char *proto = dpi ? ndpi_get_proto_name (module, ndpi->protocol) : "";
-    if (strcmp (proto, "Unknown") == 0) proto = "";
+    ndpi_context *ndpi = (ndpi_context *) g_object_get_data((GObject *) flow, "ndpi");
+    char *proto = dpi ? ndpi_get_proto_name(module, ndpi->protocol) : "";
+    if (strcmp(proto, "Unknown") == 0)
+        proto = "";
 #endif
 
-    g_object_get (flow, "packets", &packets, NULL);
-    g_object_get (flow, "state", &state, NULL);
-    g_object_get (flow, "hash", &hash, "protocol", &protocol, NULL);
-    g_object_get (flow, "lport", &lport, "uport", &uport, NULL);
-    g_object_get (flow, "lip", &lip, "uip", &uip, NULL);
-    g_printf ("0x%04x: %-16s %-16s %-2d %-5d %-5d  %-5zu %s %s\n",
-            hash, lip, uip, protocol, lport, uport, packets,
-            state == FLOW_NEW ? "NEW   " :
-                (state == FLOW_OPEN ? "OPEN  " : "CLOSED"),
+    g_object_get(flow, "packets", &packets, NULL);
+    g_object_get(flow, "state", &state, NULL);
+    g_object_get(flow, "hash", &hash, "protocol", &protocol, NULL);
+    g_object_get(flow, "lport", &lport, "uport", &uport, NULL);
+    g_object_get(flow, "lip", &lip, "uip", &uip, NULL);
+    g_printf("0x%04x: %-16s %-16s %-2d %-5d %-5d  %-5zu %s %s\n",
+             hash, lip, uip, protocol, lport, uport, packets,
+             state == FLOW_NEW ? "NEW   " : (state == FLOW_OPEN ? "OPEN  " : "CLOSED"),
 #if defined(LIBNDPI_OLD_API) || defined(LIBNDPI_NEW_API)
-            dpi ? proto :
+             dpi ? proto :
 #endif
-            "");
-    g_free (lip);
-    g_free (uip);
+             "");
+    g_free(lip);
+    g_free(uip);
 }
 
-static void
-clean_flow (GInetFlow *flow, gpointer data)
+static void clean_flow(GInetFlow * flow, gpointer data)
 {
 #if defined(LIBNDPI_OLD_API) || defined(LIBNDPI_NEW_API)
-    ndpi_context *ndpi = (ndpi_context *) g_object_get_data ((GObject *) flow, "ndpi");
-    if (ndpi)
-    {
+    ndpi_context *ndpi = (ndpi_context *) g_object_get_data((GObject *) flow, "ndpi");
+    if (ndpi) {
         //ndpi_free_flow (ndpi->flow);
-        ndpi_free (ndpi->src);
-        ndpi_free (ndpi->dst);
-        free (ndpi);
+        ndpi_free(ndpi->src);
+        ndpi_free(ndpi->dst);
+        free(ndpi);
     }
 #endif
 }
 
-static GOptionEntry entries[] =
-{
-    { "pcap", 'p', 0, G_OPTION_ARG_STRING, &filename, "Pcap file to use", NULL },
-    { "workers", 'w', 0, G_OPTION_ARG_INT, &nworkers, "Number of worker threads", NULL },
+static GOptionEntry entries[] = {
+    {"pcap", 'p', 0, G_OPTION_ARG_STRING, &filename, "Pcap file to use", NULL},
+    {"workers", 'w', 0, G_OPTION_ARG_INT, &nworkers, "Number of worker threads", NULL},
 #if defined(LIBNDPI_OLD_API) || defined(LIBNDPI_NEW_API)
-    { "dpi", 'd', 0, G_OPTION_ARG_NONE, &dpi, "Analyse frames using DPI", NULL },
+    {"dpi", 'd', 0, G_OPTION_ARG_NONE, &dpi, "Analyse frames using DPI", NULL},
 #endif
-    { "verbose", 'v', 0, G_OPTION_ARG_NONE, &verbose, "Be verbose", NULL },
-    { NULL }
+    {"verbose", 'v', 0, G_OPTION_ARG_NONE, &verbose, "Be verbose", NULL},
+    {NULL}
 };
 
-int
-main (int argc, char **argv)
+int main(int argc, char **argv)
 {
     GError *error = NULL;
     GOptionContext *context;
     gint i, j;
 
     /* Parse options */
-    context = g_option_context_new ("- Demonstration of libginetflow");
-    g_option_context_add_main_entries (context, entries, NULL);
-    if (!g_option_context_parse (context, &argc, &argv, &error))
-    {
-        g_print ("%s", g_option_context_get_help (context, FALSE, NULL));
-        g_print ("ERROR: %s\n", error->message);
-        exit (1);
+    context = g_option_context_new("- Demonstration of libginetflow");
+    g_option_context_add_main_entries(context, entries, NULL);
+    if (!g_option_context_parse(context, &argc, &argv, &error)) {
+        g_print("%s", g_option_context_get_help(context, FALSE, NULL));
+        g_print("ERROR: %s\n", error->message);
+        exit(1);
     }
-    if (filename == NULL)
-    {
-        g_print ("%s", g_option_context_get_help (context, FALSE, NULL));
-        g_print ("ERROR: Require pcap file\n");
-        exit (1);
+    if (filename == NULL) {
+        g_print("%s", g_option_context_get_help(context, FALSE, NULL));
+        g_print("ERROR: Require pcap file\n");
+        exit(1);
     }
-    if (nworkers < 1 || nworkers > MAX_WORKERS)
-    {
-        g_print ("%s", g_option_context_get_help (context, FALSE, NULL));
-        g_print ("ERROR: 1-%d workers\n", MAX_WORKERS);
-        exit (1);
+    if (nworkers < 1 || nworkers > MAX_WORKERS) {
+        g_print("%s", g_option_context_get_help(context, FALSE, NULL));
+        g_print("ERROR: 1-%d workers\n", MAX_WORKERS);
+        exit(1);
     }
-
 #if defined(LIBNDPI_OLD_API) || defined(LIBNDPI_NEW_API)
-    if (dpi)
-    {
+    if (dpi) {
         NDPI_PROTOCOL_BITMASK all;
-        flow_size = ndpi_detection_get_sizeof_ndpi_flow_struct ();
-        id_size = ndpi_detection_get_sizeof_ndpi_id_struct ();
-        module = ndpi_init_detection_module (1000, malloc, free, ndpi_debug_function);
-        NDPI_BITMASK_SET_ALL (all);
-        ndpi_set_protocol_detection_bitmask2 (module, &all);
+        flow_size = ndpi_detection_get_sizeof_ndpi_flow_struct();
+        id_size = ndpi_detection_get_sizeof_ndpi_id_struct();
+        module = ndpi_init_detection_module(1000, malloc, free, ndpi_debug_function);
+        NDPI_BITMASK_SET_ALL(all);
+        ndpi_set_protocol_detection_bitmask2(module, &all);
     }
 #endif
 
-    for (i=0; i<nworkers; i++)
-    {
-        workers[i] = g_thread_pool_new ((GFunc)worker_func,
-                                        GINT_TO_POINTER(i), 1, FALSE, NULL);
+    for (i = 0; i < nworkers; i++) {
+        workers[i] =
+            g_thread_pool_new((GFunc) worker_func, GINT_TO_POINTER(i), 1, FALSE, NULL);
     }
 
-    table = g_inet_flow_table_new ();
-    process_pcap (filename);
+    table = g_inet_flow_table_new();
+    process_pcap(filename);
 
-    for (i=0; i<nworkers; i++)
-    {
-        for (j=0; j<10; j++)
-        {
-            g_thread_pool_stop_unused_threads ();
-            if (g_thread_pool_unprocessed (workers[i]) == 0 &&
-                g_thread_pool_get_num_threads (workers[i]) == 0 &&
-                g_thread_pool_get_num_unused_threads () == 0)
-            {
+    for (i = 0; i < nworkers; i++) {
+        for (j = 0; j < 10; j++) {
+            g_thread_pool_stop_unused_threads();
+            if (g_thread_pool_unprocessed(workers[i]) == 0 &&
+                g_thread_pool_get_num_threads(workers[i]) == 0
+                && g_thread_pool_get_num_unused_threads() == 0) {
                 break;
+            } else if (j >= 9) {
+                g_printf("Worker %d threads not shutting down\n", i);
             }
-            else if (j >= 9)
-            {
-                g_printf ("Worker %d threads not shutting down\n", i);
-            }
-            g_usleep (100000);
+            g_usleep(100000);
         }
-        g_thread_pool_free (workers[i], FALSE, TRUE);
+        g_thread_pool_free(workers[i], FALSE, TRUE);
     }
 
-    g_printf ("Worker:frames");
-    for (i=0; i<nworkers; i++)
-        g_printf (" %d:%d", i, processed[i]);
-    g_printf ("\n");
-    g_printf ("Hash    lip              uip            prot lport uport  pkts  state  app\n");
-    g_inet_flow_foreach (table, (GIFFunc) print_flow, NULL);
-    g_inet_flow_foreach (table, (GIFFunc) clean_flow, NULL);
-    g_object_unref (table);
+    g_printf("Worker:frames");
+    for (i = 0; i < nworkers; i++)
+        g_printf(" %d:%d", i, processed[i]);
+    g_printf("\n");
+    g_printf
+        ("Hash    lip              uip            prot lport uport  pkts  state  app\n");
+    g_inet_flow_foreach(table, (GIFFunc) print_flow, NULL);
+    g_inet_flow_foreach(table, (GIFFunc) clean_flow, NULL);
+    g_object_unref(table);
 #if defined(LIBNDPI_OLD_API) || defined(LIBNDPI_NEW_API)
     if (module)
-        ndpi_exit_detection_module (module, free);
+        ndpi_exit_detection_module(module, free);
 #endif
-    g_option_context_free (context);
+    g_option_context_free(context);
     return 0;
 }
