@@ -88,9 +88,29 @@ typedef struct pppoe_sess_hdr {
     u_int16_t ppp_protocol_id;
 } __attribute__ ((packed)) pppoe_sess_hdr_t;
 
+#define IP_PROTOCOL_HBH_OPT     0
 #define IP_PROTOCOL_ICMP        1
+#define IP_PROTOCOL_IPV4        4
 #define IP_PROTOCOL_TCP         6
 #define IP_PROTOCOL_UDP         17
+#define IP_PROTOCOL_IPV6        41
+#define IP_PROTOCOL_ROUTING     43
+#define IP_PROTOCOL_FRAGMENT    44
+#define IP_PROTOCOL_ESP         50
+#define IP_PROTOCOL_AUTH        51
+#define IP_PROTOCOL_ICMPV6      58
+#define IP_PROTOCOL_NO_NEXT_HDR 59
+#define IP_PROTOCOL_DEST_OPT    60
+#define IP_PROTOCOL_SCTP        132
+#define IP_PROTOCOL_MOBILITY    135
+#define IP_PROTOCOL_HIPV2       139
+#define IP_PROTOCOL_SHIM6       140
+
+#define IPV6_FIRST_8_OCTETS     1
+#define AH_HEADER_LEN_ADD       2
+#define FOUR_BYTE_UNITS         4
+#define EIGHT_OCTET_UNITS       8
+
 /* PPP protocol IDs */
 #define PPP_PROTOCOL_IPV4          0x0021
 #define PPP_PROTOCOL_IPV6          0x0057
@@ -135,6 +155,33 @@ typedef struct udp_hdr_t {
     guint16 check;
 } __attribute__ ((packed)) udp_hdr_t;
 
+typedef struct frag_hdr_t {
+    guint8 next_hdr;
+    guint8 res;
+    guint16 fo_res_mflag;
+    guint32 id;
+} __attribute__ ((packed)) frag_hdr_t;
+
+typedef struct auth_hdr_t {
+    guint8 next_hdr;
+    guint8 payload_len;
+    guint16 reserved;
+    guint64 spi_seq;
+    guint64 icv;
+} __attribute__ ((packed)) auth_hdr_t;
+
+typedef struct sctp_hdr_t {
+    guint16 source;
+    guint16 destination;
+    guint32 ver_tag;
+    guint32 checksum;
+} __attribute__ ((packed)) sctp_hdr_t;
+
+typedef struct ipv6_partial_ext_hdr_t {
+    guint8 next_hdr;
+    guint8 hdr_ext_len;
+} __attribute__ ((packed)) ipv6_partial_ext_hdr_t;
+
 static inline guint64 get_time_us(void)
 {
     struct timeval tv;
@@ -156,6 +203,11 @@ static inline guint16 crc16(guint16 iv, guint64 p)
         }
     }
     return iv;
+}
+
+static guint32 get_hdr_len(guint8 hdr_ext_len)
+{
+    return (hdr_ext_len + IPV6_FIRST_8_OCTETS) * EIGHT_OCTET_UNITS;
 }
 
 static guint16 flow_hash(GInetFlow * f)
@@ -227,6 +279,23 @@ static gboolean flow_parse_udp(GInetFlow * f, const guint8 * data, guint32 lengt
     return TRUE;
 }
 
+static gboolean flow_parse_sctp(GInetFlow * f, const guint8 * data, guint32 length)
+{
+    sctp_hdr_t *sctp = (sctp_hdr_t *) data;
+    if (length < sizeof(sctp_hdr_t))
+        return FALSE;
+    guint16 sport = GUINT16_FROM_BE(sctp->source);
+    guint16 dport = GUINT16_FROM_BE(sctp->destination);
+    if (sport < dport) {
+        f->tuple.lower_port = sport;
+        f->tuple.upper_port = dport;
+    } else {
+        f->tuple.upper_port = sport;
+        f->tuple.lower_port = dport;
+    }
+    return TRUE;
+}
+
 static gboolean flow_parse_ipv4(GInetFlow * f, const guint8 * data, guint32 length)
 {
     ip_hdr_t *iph = (ip_hdr_t *) data;
@@ -264,6 +333,10 @@ static gboolean flow_parse_ipv4(GInetFlow * f, const guint8 * data, guint32 leng
 static gboolean flow_parse_ipv6(GInetFlow * f, const guint8 * data, guint32 length)
 {
     ip6_hdr_t *iph = (ip6_hdr_t *) data;
+    frag_hdr_t *fragment_hdr;
+    auth_hdr_t *auth_hdr;
+    ipv6_partial_ext_hdr_t *ipv6_part_hdr;
+
     if (length < sizeof(ip6_hdr_t))
         return FALSE;
     if (memcmp(iph->saddr, iph->daddr, 16) < 0) {
@@ -274,19 +347,66 @@ static gboolean flow_parse_ipv6(GInetFlow * f, const guint8 * data, guint32 leng
         memcpy(f->tuple.lower_ip, iph->daddr, 16);
     }
     f->tuple.protocol = iph->next_hdr;
-    switch (iph->next_hdr) {
+    data += sizeof(ip6_hdr_t);
+    length -= sizeof(ip6_hdr_t);
+
+  next_header:
+    DEBUG("Next Header: %u\n", f->tuple.protocol);
+    switch (f->tuple.protocol) {
     case IP_PROTOCOL_TCP:
-        if (!flow_parse_tcp(f, data + sizeof(ip6_hdr_t), length - sizeof(ip6_hdr_t)))
+        if (!flow_parse_tcp(f, data, length)) {
             return FALSE;
+        }
         break;
     case IP_PROTOCOL_UDP:
-        if (!flow_parse_udp(f, data + sizeof(ip6_hdr_t), length - sizeof(ip6_hdr_t)))
+        if (!flow_parse_udp(f, data, length)) {
             return FALSE;
+        }
         break;
-    case IP_PROTOCOL_ICMP:
+    case IP_PROTOCOL_ICMPV6:
         f->tuple.lower_port = 0;
         f->tuple.upper_port = 0;
         break;
+    case IP_PROTOCOL_SCTP:
+        if (!flow_parse_sctp(f, data, length)) {
+            return FALSE;
+        }
+        break;
+    case IP_PROTOCOL_IPV4:
+        if (!flow_parse_ipv4(f, data, length)) {
+            return FALSE;
+        }
+        break;
+    case IP_PROTOCOL_IPV6:
+        if (!flow_parse_ipv6(f, data, length)) {
+            return FALSE;
+        }
+        break;
+    case IP_PROTOCOL_HBH_OPT:
+    case IP_PROTOCOL_DEST_OPT:
+    case IP_PROTOCOL_ROUTING:
+    case IP_PROTOCOL_MOBILITY:
+    case IP_PROTOCOL_HIPV2:
+    case IP_PROTOCOL_SHIM6:
+        ipv6_part_hdr = (ipv6_partial_ext_hdr_t *) data;
+        f->tuple.protocol = ipv6_part_hdr->next_hdr;
+        data += get_hdr_len(ipv6_part_hdr->hdr_ext_len);
+        length -= get_hdr_len(ipv6_part_hdr->hdr_ext_len);
+        goto next_header;
+    case IP_PROTOCOL_FRAGMENT:
+        fragment_hdr = (frag_hdr_t *) data;
+        f->tuple.protocol = fragment_hdr->next_hdr;
+        data += sizeof(frag_hdr_t);
+        length -= sizeof(frag_hdr_t);
+        goto next_header;
+    case IP_PROTOCOL_AUTH:
+        auth_hdr = (auth_hdr_t *) data;
+        f->tuple.protocol = auth_hdr->next_hdr;
+        data += (auth_hdr->payload_len + AH_HEADER_LEN_ADD) * FOUR_BYTE_UNITS;
+        length -= (auth_hdr->payload_len + AH_HEADER_LEN_ADD) * FOUR_BYTE_UNITS;
+        goto next_header;
+    case IP_PROTOCOL_ESP:
+    case IP_PROTOCOL_NO_NEXT_HDR:
     default:
         return FALSE;
     }
