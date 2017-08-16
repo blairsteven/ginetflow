@@ -1,0 +1,38 @@
+# 
+# Suppress false-positive leaks in libgobject
+#
+
+{
+   ignore_libgobject_g_type_reg_fundamental
+   Memcheck:Leak
+   ...
+   obj:*/*libgobject*.so*
+   fun:g_type_register_fundamental
+}
+
+{
+   ignore_libgobject_g_type_reg_static
+   Memcheck:Leak
+   match-leak-kinds: possible
+   ...
+   obj:*/*libgobject*.so*
+   fun:g_type_register_static
+}
+
+{
+   ignore_libgobject_call_init
+   Memcheck:Leak
+   match-leak-kinds: possible
+   ...
+   obj:*/*libgobject*.so*
+   fun:call_init.part.0
+}
+
+{
+   ignore_libgobject_g_param_spec
+   Memcheck:Leak
+   match-leak-kinds: possible
+   ...
+   obj:*/*libgobject*.so*
+   fun:g_param_spec_uint64
+}
