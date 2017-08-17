@@ -80,11 +80,11 @@ typedef struct vlan_hdr_t {
 } __attribute__ ((packed)) vlan_hdr_t;
 
 typedef struct pppoe_sess_hdr {
-    u_int8_t ver_type;
-    u_int8_t code;
-    u_int16_t session_id;
-    u_int16_t payload_length;
-    u_int16_t ppp_protocol_id;
+    guint8 ver_type;
+    guint8 code;
+    guint16 session_id;
+    guint16 payload_length;
+    guint16 ppp_protocol_id;
 } __attribute__ ((packed)) pppoe_sess_hdr_t;
 
 #define IP_PROTOCOL_HBH_OPT     0
@@ -387,19 +387,29 @@ static gboolean flow_parse_ipv6(GInetFlow * f, const guint8 * data, guint32 leng
     case IP_PROTOCOL_MOBILITY:
     case IP_PROTOCOL_HIPV2:
     case IP_PROTOCOL_SHIM6:
+        if (length < sizeof(ipv6_partial_ext_hdr_t))
+            return FALSE;
         ipv6_part_hdr = (ipv6_partial_ext_hdr_t *) data;
+        if (length < get_hdr_len(ipv6_part_hdr->hdr_ext_len))
+            return FALSE;
         f->tuple.protocol = ipv6_part_hdr->next_hdr;
         data += get_hdr_len(ipv6_part_hdr->hdr_ext_len);
         length -= get_hdr_len(ipv6_part_hdr->hdr_ext_len);
         goto next_header;
     case IP_PROTOCOL_FRAGMENT:
+        if (length < sizeof(frag_hdr_t))
+            return FALSE;
         fragment_hdr = (frag_hdr_t *) data;
         f->tuple.protocol = fragment_hdr->next_hdr;
         data += sizeof(frag_hdr_t);
         length -= sizeof(frag_hdr_t);
         goto next_header;
     case IP_PROTOCOL_AUTH:
+        if (length < sizeof(auth_hdr_t))
+            return FALSE;
         auth_hdr = (auth_hdr_t *) data;
+        if (length < (auth_hdr->payload_len + AH_HEADER_LEN_ADD) * FOUR_BYTE_UNITS)
+            return FALSE;
         f->tuple.protocol = auth_hdr->next_hdr;
         data += (auth_hdr->payload_len + AH_HEADER_LEN_ADD) * FOUR_BYTE_UNITS;
         length -= (auth_hdr->payload_len + AH_HEADER_LEN_ADD) * FOUR_BYTE_UNITS;
@@ -461,6 +471,8 @@ static gboolean flow_parse(GInetFlow * f, const guint8 * data, guint32 length, g
             return FALSE;
         break;
     case ETH_PROTOCOL_PPPOE_SESS:
+        if (length < sizeof(pppoe_sess_hdr_t))
+            return FALSE;
         pppoe = (pppoe_sess_hdr_t *) data;
         if (pppoe->ppp_protocol_id == g_htons(PPP_PROTOCOL_IPV4)) {
             type = ETH_PROTOCOL_IP;

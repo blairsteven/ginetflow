@@ -588,7 +588,7 @@ void test_flow_parse_not_ipv6_ext()
     NP_ASSERT_FALSE(flow_parse_ipv6(&test_flow, test_buffer, len));
 }
 
-void test_flow_parse_unsupported_after_ip_protocols()
+void test_flow_parse_unsupported_transport_protocols()
 {
     setup_test();
 
@@ -639,6 +639,164 @@ void test_flow_parse_more_than_2_vlan_tags()
         make_pkt_vlan(test_buffer, ETH_PROTOCOL_IPV6, ETH_PROTOCOL_8021AD,
                       IP_PROTOCOL_ICMPV6, 3);
     NP_ASSERT_FALSE(flow_parse(&test_flow, test_buffer, len, 0));
+}
+
+void test_flow_parse_malformed_vlan_hdr_length()
+{
+    setup_test();
+
+    guint8 *p = build_hdr_eth(test_buffer, ETH_PROTOCOL_8021Q);
+    p = build_hdr_vlan(p, ETH_PROTOCOL_8021Q, ETH_PROTOCOL_IP, 1);
+    guint8 len = (guint) (p - test_buffer);
+
+    /* No VLAN length */
+    NP_ASSERT_FALSE(flow_parse(&test_flow, test_buffer, len - sizeof(vlan_hdr_t), 0));
+    /* Partial VLAN length */
+    NP_ASSERT_FALSE(flow_parse(&test_flow, test_buffer, len - 1, 0));
+}
+
+void test_flow_parse_malformed_ipv4_hdr_length()
+{
+    setup_test();
+
+    guint8 *p = build_hdr_eth(test_buffer, ETH_PROTOCOL_IP);
+    p = build_hdr_ip(p, ETH_PROTOCOL_IP, IP_PROTOCOL_TCP, FALSE);
+    guint len = (guint) (p - test_buffer);
+
+    /* No IPv4 length */
+    NP_ASSERT_FALSE(flow_parse(&test_flow, test_buffer, len - sizeof(ip_hdr_t), 0));
+    /* Partial IPv4 length */
+    NP_ASSERT_FALSE(flow_parse(&test_flow, test_buffer, len - 8, 0));
+}
+
+void test_flow_parse_malformed_ipv6_hdr_length()
+{
+    setup_test();
+
+    guint8 *p = build_hdr_eth(test_buffer, ETH_PROTOCOL_IPV6);
+    p = build_hdr_ip(p, ETH_PROTOCOL_IPV6, IP_PROTOCOL_TCP, FALSE);
+    guint len = (guint) (p - test_buffer);
+
+    /* No IPv6 length */
+    NP_ASSERT_FALSE(flow_parse(&test_flow, test_buffer, len - sizeof(ip6_hdr_t), 0));
+    /* Partial IPv6 length */
+    NP_ASSERT_FALSE(flow_parse(&test_flow, test_buffer, len - 8, 0));
+}
+
+void test_flow_parse_malformed_pppoe_hdr_length()
+{
+    setup_test();
+
+    guint8 *p = build_hdr_eth(test_buffer, ETH_PROTOCOL_PPPOE_SESS);
+    p = build_hdr_pppoe(p, IP_PROTOCOL_UDP, PPP_PROTOCOL_IPV4, FALSE);
+    guint len = (guint) (p - test_buffer);
+
+    /* No PPPoE length */
+    NP_ASSERT_FALSE(flow_parse(&test_flow, test_buffer, len - sizeof(pppoe_sess_hdr_t), 0));
+    /* Partial PPPoE length */
+    NP_ASSERT_FALSE(flow_parse(&test_flow, test_buffer, len - 2, 0));
+}
+
+void test_flow_parse_malformed_tcp_hdr_length()
+{
+    setup_test();
+
+    guint8 *p = build_hdr_eth(test_buffer, ETH_PROTOCOL_IPV6);
+    p = build_hdr_ip(p, ETH_PROTOCOL_IPV6, IP_PROTOCOL_TCP, FALSE);
+    p = build_hdr_after_ip(p, IP_PROTOCOL_TCP, FALSE);
+    guint len = (guint) (p - test_buffer);
+
+    /* No TCP length */
+    NP_ASSERT_FALSE(flow_parse(&test_flow, test_buffer, len - sizeof(tcp_hdr_t), 0));
+    /* Partial TCP length */
+    NP_ASSERT_FALSE(flow_parse(&test_flow, test_buffer, len - 4, 0));
+}
+
+void test_flow_parse_malformed_udp_hdr_length()
+{
+    setup_test();
+
+    guint8 *p = build_hdr_eth(test_buffer, ETH_PROTOCOL_IPV6);
+    p = build_hdr_ip(p, ETH_PROTOCOL_IPV6, IP_PROTOCOL_UDP, FALSE);
+    p = build_hdr_after_ip(p, IP_PROTOCOL_UDP, FALSE);
+    guint len = (guint) (p - test_buffer);
+
+    /* No UDP length */
+    NP_ASSERT_FALSE(flow_parse(&test_flow, test_buffer, len - sizeof(udp_hdr_t), 0));
+    /* Partial UDP length */
+    NP_ASSERT_FALSE(flow_parse(&test_flow, test_buffer, len - 4, 0));
+}
+
+void test_flow_parse_malformed_icmp_hdr_length()
+{
+    setup_test();
+
+    guint len = make_pkt(test_buffer, ETH_PROTOCOL_IP, IP_PROTOCOL_ICMP);
+
+    /* No ICMP length */
+    NP_ASSERT(flow_parse(&test_flow, test_buffer, len - sizeof(icmp_hdr_t), 0));
+    /* Partial ICMP length */
+    NP_ASSERT(flow_parse(&test_flow, test_buffer, len - 4, 0));
+}
+
+void test_flow_parse_malformed_ipv6_ext_hbh_length()
+{
+    setup_test();
+
+    guint8 *p = build_hdr_ip(test_buffer, ETH_PROTOCOL_IPV6, IP_PROTOCOL_HBH_OPT, FALSE);
+    p = build_hdr_ipv6_ext(p, IP_PROTOCOL_HBH_OPT, IP_PROTOCOL_ICMP, FALSE);
+    guint len = (guint) (p - test_buffer);
+
+    /* No HBH header length ( (4 + 1) * 8) */
+    NP_ASSERT_FALSE(flow_parse_ipv6(&test_flow, test_buffer, len - 40));
+    /* Partial part HBH header length */
+    NP_ASSERT_FALSE(flow_parse_ipv6(&test_flow, test_buffer, len - 39));
+    /* Partial full HBH length */
+    NP_ASSERT_FALSE(flow_parse_ipv6(&test_flow, test_buffer, len - 8));
+}
+
+void test_flow_parse_malformed_ipv6_ext_frag_length()
+{
+    setup_test();
+
+    guint8 *p = build_hdr_ip(test_buffer, ETH_PROTOCOL_IPV6, IP_PROTOCOL_FRAGMENT, FALSE);
+    p = build_hdr_ipv6_ext(p, IP_PROTOCOL_FRAGMENT, IP_PROTOCOL_ICMP, FALSE);
+    guint len = (guint) (p - test_buffer);
+
+    /* No Fragment header length */
+    NP_ASSERT_FALSE(flow_parse_ipv6(&test_flow, test_buffer, len - sizeof(frag_hdr_t)));
+    /* Partial Fragment length */
+    NP_ASSERT_FALSE(flow_parse_ipv6(&test_flow, test_buffer, len - 4));
+}
+
+void test_flow_parse_malformed_ipv6_ext_auth_length()
+{
+    setup_test();
+
+    guint8 *p = build_hdr_ip(test_buffer, ETH_PROTOCOL_IPV6, IP_PROTOCOL_AUTH, FALSE);
+    p = build_hdr_ipv6_ext(p, IP_PROTOCOL_AUTH, IP_PROTOCOL_ICMP, FALSE);
+    guint len = (guint) (p - test_buffer);
+
+    /* No Auth length ( (4 + 2) * 4) */
+    NP_ASSERT_FALSE(flow_parse_ipv6(&test_flow, test_buffer, len - 24));
+    /* Partial part Auth header length */
+    NP_ASSERT_FALSE(flow_parse_ipv6(&test_flow, test_buffer, len - 23));
+    /* Partial full Auth length */
+    NP_ASSERT_FALSE(flow_parse_ipv6(&test_flow, test_buffer, len - 8));
+}
+
+void test_flow_parse_malformed_ipv6_ext_sctp_length()
+{
+    setup_test();
+
+    guint8 *p = build_hdr_ip(test_buffer, ETH_PROTOCOL_IPV6, IP_PROTOCOL_SCTP, FALSE);
+    p = build_hdr_ipv6_ext(p, IP_PROTOCOL_SCTP, IP_PROTOCOL_ICMP, FALSE);
+    guint len = (guint) (p - test_buffer);
+
+    /* No SCTP length */
+    NP_ASSERT_FALSE(flow_parse_ipv6(&test_flow, test_buffer, sizeof(sctp_hdr_t)));
+    /* Partial SCTP length */
+    NP_ASSERT_FALSE(flow_parse_ipv6(&test_flow, test_buffer, len - 8));
 }
 
 void test_flow_create()
@@ -706,6 +864,158 @@ void test_flow_tcp_new()
     NP_ASSERT_NOT_NULL((flow = g_inet_flow_get_full(table, test_buffer, len, 0, 0, TRUE)));
     g_object_get(flow, "state", &state, NULL);
     NP_ASSERT_EQUAL(state, FLOW_NEW);
+
+    g_object_unref(table);
+}
+
+void test_flow_tcp_update()
+{
+    GInetFlowTable *table;
+    GInetFlow *flow;
+    guint state = FLOW_CLOSED;
+
+    setup_test();
+    NP_ASSERT_NOT_NULL((table = g_inet_flow_table_new()));
+    guint len = make_pkt(test_buffer, ETH_PROTOCOL_IP, IP_PROTOCOL_TCP);
+    NP_ASSERT_NOT_NULL((flow = g_inet_flow_get_full(table, test_buffer, len, 0, 0, TRUE)));
+
+    /* Update flow */
+    len = make_pkt(test_buffer, ETH_PROTOCOL_IP, IP_PROTOCOL_TCP);
+    NP_ASSERT_NOT_NULL((flow = g_inet_flow_get_full(table, test_buffer, len, 0, 0, TRUE)));
+
+    /* Flow not updated */
+    len = make_pkt(test_buffer, ETH_PROTOCOL_IP, IP_PROTOCOL_TCP);
+    NP_ASSERT_NOT_NULL((flow = g_inet_flow_get(table, test_buffer, len)));
+
+    g_object_unref(table);
+}
+
+gchar *num_to_string(guint8 * number, GSocketFamily family)
+{
+    gchar *result;
+    guint8 *one_byte = number;
+
+    GInetAddress *gaddress = g_inet_address_new_from_bytes(number, family);
+    result = g_inet_address_to_string(gaddress);
+    g_object_unref(gaddress);
+    return result;
+}
+
+void test_flow_properties()
+{
+    /* Original values converted to network byte order */
+    guint8 saddr[] = { 0x21, 0x43, 0x65, 0x87 };
+    guint8 daddr[] = { 0x78, 0x56, 0x34, 0x12 };
+
+    GInetFlowTable *table;
+    GInetFlow *flow;
+    guint state = FLOW_CLOSED;
+    guint64 packets;
+    guint hash;
+    guint protocol;
+    guint lport;
+    guint uport;
+    gchar *lip;
+    gchar *uip;
+    gchar *nothing = NULL;
+
+    setup_test();
+
+    NP_ASSERT_NOT_NULL((table = g_inet_flow_table_new()));
+    guint len = make_pkt(test_buffer, ETH_PROTOCOL_IP, IP_PROTOCOL_TCP);
+    NP_ASSERT_NOT_NULL((flow = g_inet_flow_get_full(table, test_buffer, len, 0, 0, TRUE)));
+    g_object_get(flow, "state", &state, NULL);
+    NP_ASSERT_EQUAL(state, FLOW_NEW);
+
+    /* Update flow */
+    len = make_pkt(test_buffer, ETH_PROTOCOL_IP, IP_PROTOCOL_TCP);
+    NP_ASSERT_NOT_NULL((flow = g_inet_flow_get_full(table, test_buffer, len, 0, 0, TRUE)));
+
+    g_object_get(flow, "packets", &packets, "hash", &hash, "protocol", &protocol, NULL);
+    NP_ASSERT_EQUAL(packets, 2);
+    NP_ASSERT(hash);
+    NP_ASSERT_EQUAL(protocol, IP_PROTOCOL_TCP);
+
+    g_object_get(flow, "lport", &lport, "uport", &uport, NULL);
+    NP_ASSERT_EQUAL(lport, test_sport);
+    NP_ASSERT_EQUAL(uport, test_dport);
+
+    g_object_get(flow, "lip", &lip, "uip", &uip, NULL);
+    NP_ASSERT_NOT_NULL(lip);
+    NP_ASSERT_NOT_NULL(uip);
+    NP_ASSERT_EQUAL(g_strcmp0(num_to_string(saddr, G_SOCKET_FAMILY_IPV4), lip), 0);
+    NP_ASSERT_EQUAL(g_strcmp0(num_to_string(daddr, G_SOCKET_FAMILY_IPV4), uip), 0);
+
+    g_object_get(flow, "nothing", &nothing, NULL);
+    NP_ASSERT_NULL(nothing);
+
+    g_free(lip);
+    g_free(uip);
+    g_free(nothing);
+    g_object_unref(table);
+}
+
+void test_flow_table_properties()
+{
+    GInetFlowTable *table;
+    GInetFlow *flow;
+    guint64 size;
+    guint64 hits;
+    guint64 misses;
+    gchar *nothing = NULL;
+
+    setup_test();
+    NP_ASSERT_NOT_NULL((table = g_inet_flow_table_new()));
+    guint len = make_pkt(test_buffer, ETH_PROTOCOL_IP, IP_PROTOCOL_UDP);
+    NP_ASSERT_NOT_NULL((flow = g_inet_flow_get_full(table, test_buffer, len, 0, 0, TRUE)));
+
+    len = make_pkt(test_buffer, ETH_PROTOCOL_IP, IP_PROTOCOL_TCP);
+    NP_ASSERT_NOT_NULL((flow = g_inet_flow_get_full(table, test_buffer, len, 0, 0, TRUE)));
+
+    len = make_pkt(test_buffer, ETH_PROTOCOL_IP, IP_PROTOCOL_TCP);
+    NP_ASSERT_NOT_NULL((flow = g_inet_flow_get_full(table, test_buffer, len, 0, 0, TRUE)));
+
+    g_object_get(table, "size", &size, "hits", &hits, "misses", &misses, NULL);
+    NP_ASSERT_EQUAL(size, 2);
+    NP_ASSERT_EQUAL(hits, 1);
+    NP_ASSERT_EQUAL(misses, 2);
+
+    g_object_get(table, "nothing", &nothing, NULL);
+    NP_ASSERT_NULL(nothing);
+
+    g_free(nothing);
+
+    g_object_unref(table);
+}
+
+void flow_print_protocol(GInetFlow * flow)
+{
+    guint protocol;
+    gchar *lip;
+
+    NP_ASSERT_NOT_NULL(flow);
+    g_object_get(flow, "protocol", &protocol, "lip", &lip, NULL);
+    NP_ASSERT((protocol == IP_PROTOCOL_TCP) || (protocol == IP_PROTOCOL_UDP));
+    NP_ASSERT_NOT_NULL(lip);
+    g_printf("protocol: %u; lip: %s\n", protocol, lip);
+
+    g_free(lip);
+}
+
+void test_flow_foreach()
+{
+    GInetFlowTable *table;
+    GInetFlow *flow;
+
+    setup_test();
+    NP_ASSERT_NOT_NULL((table = g_inet_flow_table_new()));
+    guint len = make_pkt(test_buffer, ETH_PROTOCOL_IP, IP_PROTOCOL_UDP);
+    NP_ASSERT_NOT_NULL((flow = g_inet_flow_get_full(table, test_buffer, len, 0, 0, TRUE)));
+
+    len = make_pkt(test_buffer, ETH_PROTOCOL_IPV6, IP_PROTOCOL_TCP);
+    NP_ASSERT_NOT_NULL((flow = g_inet_flow_get_full(table, test_buffer, len, 0, 0, TRUE)));
+
+    g_inet_flow_foreach(table, (GIFFunc) flow_print_protocol, NULL);
 
     g_object_unref(table);
 }
