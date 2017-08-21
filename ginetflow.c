@@ -29,7 +29,9 @@
 /** GInetFlow */
 struct _GInetFlow {
     GObject parent;
+    GList list;
     guint64 timestamp;
+    guint64 lifetime;
     guint64 packets;
     GInetFlowState state;
     guint family;
@@ -48,11 +50,19 @@ struct _GInetFlowClass {
 };
 G_DEFINE_TYPE(GInetFlow, g_inet_flow, G_TYPE_OBJECT);
 
+static int lifetime_values[] = {
+        0, /* Closed? */
+        30, /* TIME_WAIT? */
+        300, /* normal */
+};
+
+#define LIFETIME_COUNT (sizeof(lifetime_values) / sizeof(lifetime_values[0]))
+
 /** GInetFlowTable */
 struct _GInetFlowTable {
     GObject parent;
     GHashTable *table;
-    GList *list;
+    GList *list[LIFETIME_COUNT];
     guint64 hits;
     guint64 misses;
     guint64 max;
@@ -441,6 +451,9 @@ static gboolean flow_parse(GInetFlow * f, const guint8 * data, guint32 length, g
         return FALSE;
     }
 
+    /* Set default lifetime before processing further - this may be over written */
+    f->lifetime = G_INET_FLOW_DEFAULT_NEW_TIMEOUT;
+
     e = (ethernet_hdr_t *) data;
     data += sizeof(ethernet_hdr_t);
     length -= sizeof(ethernet_hdr_t);
@@ -606,6 +619,30 @@ static void g_inet_flow_init(GInetFlow * flow)
     flow->state = FLOW_NEW;
 }
 
+static int find_expiry_index(GInetFlowTable * table, guint64 lifetime)
+{
+    for (int i = 0; i < LIFETIME_COUNT; i++)
+    {
+        if (lifetime == lifetime_values[i])
+        {
+            return i;
+        }
+    }
+    return 0;
+}
+
+static void remove_flow_by_expiry(GInetFlowTable * table, GInetFlow *flow, guint64 lifetime)
+{
+    int index = find_expiry_index(table, lifetime);
+    table->list[index] = g_list_remove_link(table->list[index], &flow->list);
+}
+
+static void insert_flow_by_expiry(GInetFlowTable * table, GInetFlow *flow, guint64 lifetime)
+{
+    int index = find_expiry_index(table, lifetime);
+    table->list[index] = g_list_concat(&flow->list, table->list[index]);
+}
+
 GInetFlow *g_inet_flow_get_full(GInetFlowTable * table,
                                 const guint8 * frame, guint length,
                                 guint16 hash, guint64 timestamp, gboolean update)
@@ -620,8 +657,9 @@ GInetFlow *g_inet_flow_get_full(GInetFlowTable * table,
     flow = (GInetFlow *) g_hash_table_lookup(table->table, &packet);
     if (flow) {
         if (update) {
-            table->list = g_list_remove(table->list, flow);
-            table->list = g_list_prepend(table->list, flow);
+            remove_flow_by_expiry(table, flow, flow->lifetime);
+            insert_flow_by_expiry(table, flow, packet.lifetime);
+            flow->lifetime = packet.lifetime;
         }
         table->hits++;
     } else {
@@ -630,11 +668,13 @@ GInetFlow *g_inet_flow_get_full(GInetFlowTable * table,
     		return NULL;
 
         flow = (GInetFlow *) g_object_new(G_INET_TYPE_FLOW, NULL);
+        flow->list.data = flow;
+        flow->lifetime = packet.lifetime;
         flow->family = packet.family;
         flow->hash = packet.hash;
         flow->tuple = packet.tuple;
         g_hash_table_replace(table->table, (gpointer) flow, (gpointer) flow);
-        table->list = g_list_prepend(table->list, flow);
+        insert_flow_by_expiry(table, flow, packet.lifetime);
         table->misses++;
     }
     if (update) {
@@ -653,13 +693,16 @@ GInetFlow *g_inet_flow_expire(GInetFlowTable * table, guint64 ts)
 {
     GList *iter;
 
-    for (iter = g_list_first(table->list); iter; iter = g_list_next(iter)) {
-        GInetFlow *flow = (GInetFlow *) iter->data;
-        guint64 timeout = (G_INET_FLOW_DEFAULT_NEW_TIMEOUT * 1000000);
-        if (flow->timestamp + timeout <= ts) {
-            table->list = g_list_remove(table->list, flow);
-            g_hash_table_remove(table->table, (gpointer) flow);
-            return flow;
+    for (int i = 0; i < LIFETIME_COUNT; i++)
+    {
+        guint64 timeout = (lifetime_values[i] * 1000000);
+        for (iter = g_list_first(table->list[i]); iter; iter = g_list_next(iter)) {
+            GInetFlow *flow = (GInetFlow *) iter->data;
+            if (flow->timestamp + timeout <= ts) {
+                table->list[i] = g_list_remove_link(table->list[i], &flow->list);
+                g_hash_table_remove(table->table, flow);
+                return flow;
+            }
         }
     }
     return NULL;
@@ -668,7 +711,6 @@ GInetFlow *g_inet_flow_expire(GInetFlowTable * table, guint64 ts)
 static void g_inet_flow_table_finalize(GObject * object)
 {
     GInetFlowTable *table = G_INET_FLOW_TABLE(object);
-    g_list_free(table->list);
     g_hash_table_destroy(table->table);
     G_OBJECT_CLASS(g_inet_flow_table_parent_class)->finalize(object);
 }
@@ -740,10 +782,13 @@ GInetFlowTable *g_inet_flow_table_new(void)
 
 void g_inet_flow_table_max_set(GInetFlowTable * table, guint64 value)
 {
-	table->max= value;
+	table->max = value;
 }
 
 void g_inet_flow_foreach(GInetFlowTable * table, GIFFunc func, gpointer user_data)
 {
-    g_list_foreach(table->list, (GFunc) func, user_data);
+    for (int i = 0; i < LIFETIME_COUNT; i++)
+    {
+        g_list_foreach(table->list[i], (GFunc) func, user_data);
+    }
 }
