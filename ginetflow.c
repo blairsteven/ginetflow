@@ -25,6 +25,7 @@
 
 #define DEBUG(fmt, args...)
 //#define DEBUG(fmt, args...) {g_printf("%s: ",__func__);g_printf (fmt, ## args);}
+#define CHECK_BIT(__v,__p) ((__v) & (1<<(__p)))
 
 /** GInetFlow */
 struct _GInetFlow {
@@ -36,6 +37,8 @@ struct _GInetFlow {
     GInetFlowState state;
     guint family;
     guint16 hash;
+    guint16 flags;
+    guint8 direction;
     struct {
         guint16 protocol;
         guint16 lower_port;
@@ -51,9 +54,8 @@ struct _GInetFlowClass {
 G_DEFINE_TYPE(GInetFlow, g_inet_flow, G_TYPE_OBJECT);
 
 static int lifetime_values[] = {
-    0,                          /* Closed? */
-    30,                         /* TIME_WAIT? */
-    300,                        /* normal */
+    30,                         /* FLOW_NEW, FLOW_CLOSED */
+    300,                        /* FLOW_OPEN */
 };
 
 #define LIFETIME_COUNT (sizeof(lifetime_values) / sizeof(lifetime_values[0]))
@@ -265,10 +267,13 @@ static gboolean flow_parse_tcp(GInetFlow * f, const guint8 * data, guint32 lengt
     if (sport < dport) {
         f->tuple.lower_port = sport;
         f->tuple.upper_port = dport;
+        f->direction = 1;
     } else {
         f->tuple.upper_port = sport;
         f->tuple.lower_port = dport;
+        f->direction = 0;
     }
+    f->flags = GUINT16_FROM_BE(tcp->flags);
     return TRUE;
 }
 
@@ -282,9 +287,11 @@ static gboolean flow_parse_udp(GInetFlow * f, const guint8 * data, guint32 lengt
     if (sport < dport) {
         f->tuple.lower_port = sport;
         f->tuple.upper_port = dport;
+        f->direction = 1;
     } else {
         f->tuple.upper_port = sport;
         f->tuple.lower_port = dport;
+        f->direction = 0;
     }
     return TRUE;
 }
@@ -449,9 +456,6 @@ static gboolean flow_parse(GInetFlow * f, const guint8 * data, guint32 length, g
         return FALSE;
     }
 
-    /* Set default lifetime before processing further - this may be over written */
-    f->lifetime = G_INET_FLOW_DEFAULT_NEW_TIMEOUT;
-
     e = (ethernet_hdr_t *) data;
     data += sizeof(ethernet_hdr_t);
     length -= sizeof(ethernet_hdr_t);
@@ -612,6 +616,50 @@ static void g_inet_flow_class_init(GInetFlowClass * class)
     object_class->finalize = g_inet_flow_finalize;
 }
 
+void g_inet_flow_update_tcp(GInetFlow * flow, GInetFlow * packet)
+{
+    /* FIN */
+    if (CHECK_BIT(packet->flags, 0)) {
+        /* ACK */
+        if (CHECK_BIT(packet->flags, 4)) {
+            flow->state = FLOW_CLOSED;
+            flow->lifetime = G_INET_FLOW_DEFAULT_CLOSED_TIMEOUT;
+        }
+    }
+    /* SYN */
+    else if (CHECK_BIT(packet->flags, 1)) {
+        /* ACK */
+        if (CHECK_BIT(packet->flags, 4)) {
+            flow->state = FLOW_OPEN;
+            flow->lifetime = G_INET_FLOW_DEFAULT_OPEN_TIMEOUT;
+        } else {
+            flow->state = FLOW_NEW;
+            flow->lifetime = G_INET_FLOW_DEFAULT_NEW_TIMEOUT;
+        }
+    }
+    /* RST */
+    else if (CHECK_BIT(packet->flags, 2)) {
+        flow->state = FLOW_CLOSED;
+        flow->lifetime = G_INET_FLOW_DEFAULT_CLOSED_TIMEOUT;
+    }
+}
+
+void g_inet_flow_update_udp(GInetFlow * flow, GInetFlow * packet)
+{
+    if (packet->direction != flow->direction) {
+        flow->state = FLOW_OPEN;
+    }
+}
+
+void g_inet_flow_update(GInetFlow * flow, GInetFlow * packet)
+{
+    if (flow->tuple.protocol == IP_PROTOCOL_TCP) {
+        g_inet_flow_update_tcp(flow, packet);
+    } else if (flow->tuple.protocol == IP_PROTOCOL_UDP) {
+        g_inet_flow_update_udp(flow, packet);
+    }
+}
+
 static void g_inet_flow_init(GInetFlow * flow)
 {
     flow->state = FLOW_NEW;
@@ -656,8 +704,11 @@ GInetFlow *g_inet_flow_get_full(GInetFlowTable * table,
     if (flow) {
         if (update) {
             remove_flow_by_expiry(table, flow, flow->lifetime);
+            g_inet_flow_update(flow, &packet);
             insert_flow_by_expiry(table, flow, packet.lifetime);
             flow->lifetime = packet.lifetime;
+            flow->timestamp = timestamp ? : get_time_us();
+            flow->packets++;
         }
         table->hits++;
     } else {
@@ -667,16 +718,16 @@ GInetFlow *g_inet_flow_get_full(GInetFlowTable * table,
 
         flow = (GInetFlow *) g_object_new(G_INET_TYPE_FLOW, NULL);
         flow->list.data = flow;
-        flow->lifetime = packet.lifetime;
+        /* Set default lifetime before processing further - this may be over written */
+        flow->lifetime = G_INET_FLOW_DEFAULT_NEW_TIMEOUT;
         flow->family = packet.family;
         flow->hash = packet.hash;
         flow->tuple = packet.tuple;
         g_hash_table_replace(table->table, (gpointer) flow, (gpointer) flow);
-        insert_flow_by_expiry(table, flow, packet.lifetime);
         table->misses++;
-    }
-    if (update) {
         flow->timestamp = timestamp ? : get_time_us();
+        g_inet_flow_update(flow, &packet);
+        insert_flow_by_expiry(table, flow, packet.lifetime);
         flow->packets++;
     }
     return flow;
@@ -693,8 +744,9 @@ GInetFlow *g_inet_flow_expire(GInetFlowTable * table, guint64 ts)
 
     for (int i = 0; i < LIFETIME_COUNT; i++) {
         guint64 timeout = (lifetime_values[i] * 1000000);
-        for (iter = g_list_first(table->list[i]); iter; iter = g_list_next(iter)) {
-            GInetFlow *flow = (GInetFlow *) iter->data;
+        GList *first = g_list_first(table->list[i]);
+        if (first) {
+            GInetFlow *flow = (GInetFlow *) first->data;
             if (flow->timestamp + timeout <= ts) {
                 table->list[i] = g_list_remove_link(table->list[i], &flow->list);
                 g_hash_table_remove(table->table, flow);
