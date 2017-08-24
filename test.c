@@ -984,11 +984,13 @@ void test_flow_table_size()
     NP_ASSERT_EQUAL(max, 1);
 
     guint pk1 = make_pkt(test_buffer, 4, IP_PROTOCOL_UDP);
-    GInetFlow *flow1 = g_inet_flow_get_full(table, test_buffer, pk1, 0, get_time_us(), TRUE);
+    GInetFlow *flow1 =
+        g_inet_flow_get_full(table, test_buffer, pk1, 0, get_time_us(), TRUE);
     NP_ASSERT_NOT_NULL(flow1);
 
     guint pk2 = make_pkt(test_buffer, 4, IP_PROTOCOL_TCP);
-    GInetFlow *flow2 = g_inet_flow_get_full(table, test_buffer, pk2, 0, get_time_us(), TRUE);
+    GInetFlow *flow2 =
+        g_inet_flow_get_full(table, test_buffer, pk2, 0, get_time_us(), TRUE);
     NP_ASSERT_NULL(flow2);
 
     g_object_unref(table);

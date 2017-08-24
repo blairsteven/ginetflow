@@ -51,9 +51,9 @@ struct _GInetFlowClass {
 G_DEFINE_TYPE(GInetFlow, g_inet_flow, G_TYPE_OBJECT);
 
 static int lifetime_values[] = {
-        0, /* Closed? */
-        30, /* TIME_WAIT? */
-        300, /* normal */
+    0,                          /* Closed? */
+    30,                         /* TIME_WAIT? */
+    300,                        /* normal */
 };
 
 #define LIFETIME_COUNT (sizeof(lifetime_values) / sizeof(lifetime_values[0]))
@@ -331,11 +331,10 @@ static gboolean flow_parse_ipv4(GInetFlow * f, const guint8 * data, guint32 leng
             return FALSE;
         break;
     case IP_PROTOCOL_ICMP:
+    default:
         f->tuple.lower_port = 0;
         f->tuple.upper_port = 0;
         break;
-    default:
-        return FALSE;
     }
     return TRUE;
 }
@@ -372,10 +371,6 @@ static gboolean flow_parse_ipv6(GInetFlow * f, const guint8 * data, guint32 leng
         if (!flow_parse_udp(f, data, length)) {
             return FALSE;
         }
-        break;
-    case IP_PROTOCOL_ICMPV6:
-        f->tuple.lower_port = 0;
-        f->tuple.upper_port = 0;
         break;
     case IP_PROTOCOL_SCTP:
         if (!flow_parse_sctp(f, data, length)) {
@@ -427,8 +422,11 @@ static gboolean flow_parse_ipv6(GInetFlow * f, const guint8 * data, guint32 leng
         goto next_header;
     case IP_PROTOCOL_ESP:
     case IP_PROTOCOL_NO_NEXT_HDR:
+    case IP_PROTOCOL_ICMPV6:
     default:
-        return FALSE;
+        f->tuple.lower_port = 0;
+        f->tuple.upper_port = 0;
+        break;
     }
     return TRUE;
 }
@@ -629,13 +627,15 @@ static int find_expiry_index(GInetFlowTable * table, guint64 lifetime)
     return 0;
 }
 
-static void remove_flow_by_expiry(GInetFlowTable * table, GInetFlow *flow, guint64 lifetime)
+static void remove_flow_by_expiry(GInetFlowTable * table, GInetFlow * flow,
+                                  guint64 lifetime)
 {
     int index = find_expiry_index(table, lifetime);
     table->list[index] = g_list_remove_link(table->list[index], &flow->list);
 }
 
-static void insert_flow_by_expiry(GInetFlowTable * table, GInetFlow *flow, guint64 lifetime)
+static void insert_flow_by_expiry(GInetFlowTable * table, GInetFlow * flow,
+                                  guint64 lifetime)
 {
     int index = find_expiry_index(table, lifetime);
     table->list[index] = g_list_concat(&flow->list, table->list[index]);
@@ -661,9 +661,9 @@ GInetFlow *g_inet_flow_get_full(GInetFlowTable * table,
         }
         table->hits++;
     } else {
-    	/* Check if max table size is reached */
-    	if (table->max > 0 && g_hash_table_size(table->table) >= table->max)
-    		return NULL;
+        /* Check if max table size is reached */
+        if (table->max > 0 && g_hash_table_size(table->table) >= table->max)
+            return NULL;
 
         flow = (GInetFlow *) g_object_new(G_INET_TYPE_FLOW, NULL);
         flow->list.data = flow;
@@ -779,7 +779,7 @@ GInetFlowTable *g_inet_flow_table_new(void)
 
 void g_inet_flow_table_max_set(GInetFlowTable * table, guint64 value)
 {
-	table->max = value;
+    table->max = value;
 }
 
 void g_inet_flow_foreach(GInetFlowTable * table, GIFFunc func, gpointer user_data)
