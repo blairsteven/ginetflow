@@ -273,11 +273,11 @@ static guint8 *build_hdr_tcp_detail(guint8 * buffer, guint16 sport, guint16 dpor
 {
     guint8 *p = buffer;
     tcp_hdr_t *tcp = (tcp_hdr_t *) p;
-    tcp->source = sport;
-    tcp->destination = dport;
+    tcp->source = GUINT16_FROM_BE(sport);
+    tcp->destination = GUINT16_FROM_BE(dport);
     tcp->seq = 0;
     tcp->ack = 0;
-    tcp->flags = flags;
+    tcp->flags = GUINT16_FROM_BE(flags);
     tcp->window = 0;
     tcp->check = 0;
     tcp->urg_ptr = 0;
@@ -851,7 +851,9 @@ void test_flow_properties()
     guint uport;
     gchar *lip;
     gchar *uip;
-    gchar *nothing = NULL;
+    gchar *saddr_c = NULL;
+    gchar *daddr_c = NULL;
+
 
     setup_test();
 
@@ -877,15 +879,15 @@ void test_flow_properties()
     g_object_get(flow, "lip", &lip, "uip", &uip, NULL);
     NP_ASSERT_NOT_NULL(lip);
     NP_ASSERT_NOT_NULL(uip);
-    NP_ASSERT_STR_EQUAL(num_to_string(saddr, G_SOCKET_FAMILY_IPV4), lip);
-    NP_ASSERT_STR_EQUAL(num_to_string(daddr, G_SOCKET_FAMILY_IPV4), uip);
+    saddr_c = num_to_string(saddr, G_SOCKET_FAMILY_IPV4);
+    daddr_c = num_to_string(daddr, G_SOCKET_FAMILY_IPV4);
+    NP_ASSERT_STR_EQUAL(saddr_c, lip);
+    NP_ASSERT_STR_EQUAL(daddr_c, uip);
 
-    g_object_get(flow, "nothing", &nothing, NULL);
-    NP_ASSERT_NULL(nothing);
-
+    g_free(saddr_c);
+    g_free(daddr_c);
     g_free(lip);
     g_free(uip);
-    g_free(nothing);
     g_object_unref(table);
 }
 
@@ -896,7 +898,6 @@ void test_flow_table_properties()
     guint64 size;
     guint64 hits;
     guint64 misses;
-    gchar *nothing = NULL;
 
     setup_test();
     NP_ASSERT_NOT_NULL((table = g_inet_flow_table_new()));
@@ -913,11 +914,6 @@ void test_flow_table_properties()
     NP_ASSERT_EQUAL(size, 2);
     NP_ASSERT_EQUAL(hits, 1);
     NP_ASSERT_EQUAL(misses, 2);
-
-    g_object_get(table, "nothing", &nothing, NULL);
-    NP_ASSERT_NULL(nothing);
-
-    g_free(nothing);
 
     g_object_unref(table);
 }
@@ -983,12 +979,12 @@ void test_flow_table_size()
     g_object_get(table, "max", &max, NULL);
     NP_ASSERT_EQUAL(max, 1);
 
-    guint pk1 = make_pkt(test_buffer, 4, IP_PROTOCOL_UDP);
+    guint pk1 = make_pkt(test_buffer, ETH_PROTOCOL_IP, IP_PROTOCOL_UDP);
     GInetFlow *flow1 =
         g_inet_flow_get_full(table, test_buffer, pk1, 0, get_time_us(), TRUE);
     NP_ASSERT_NOT_NULL(flow1);
 
-    guint pk2 = make_pkt(test_buffer, 4, IP_PROTOCOL_TCP);
+    guint pk2 = make_pkt(test_buffer, ETH_PROTOCOL_IP, IP_PROTOCOL_TCP);
     GInetFlow *flow2 =
         g_inet_flow_get_full(table, test_buffer, pk2, 0, get_time_us(), TRUE);
     NP_ASSERT_NULL(flow2);
@@ -1004,14 +1000,16 @@ void test_flow_not_expired()
     guint64 size;
 
     setup_test();
-    NP_ASSERT_NOT_NULL((table = g_inet_flow_table_new()));
+    NP_ASSERT_NOT_NULL(table = g_inet_flow_table_new());
     guint len = make_pkt(test_buffer, ETH_PROTOCOL_IP, IP_PROTOCOL_UDP);
     NP_ASSERT_NOT_NULL((flow =
                         g_inet_flow_get_full(table, test_buffer, len, 0, now, TRUE)));
-    NP_ASSERT_NULL(g_inet_flow_expire
+    NP_ASSERT_NULL(flow = g_inet_flow_expire
                    (table, now + (G_INET_FLOW_DEFAULT_NEW_TIMEOUT * 1000000) - 1));
     g_object_get(table, "size", &size, NULL);
     NP_ASSERT_EQUAL(size, 1);
+    flow = g_inet_flow_expire(table, now + (G_INET_FLOW_DEFAULT_OPEN_TIMEOUT * 1000000));
+
     g_object_unref(table);
 }
 
@@ -1089,6 +1087,7 @@ void test_flow_tcp_state_basic()
     GInetFlow *flow;
     guint state = FLOW_CLOSED;
     guint64 size;
+    guint64 ts;
 
     setup_test();
     NP_ASSERT_NOT_NULL((table = g_inet_flow_table_new()));
@@ -1127,6 +1126,8 @@ void test_flow_tcp_state_basic()
     NP_ASSERT_NOT_NULL((flow = g_inet_flow_get_full(table, test_buffer, len, 0, 3, TRUE)));
     g_object_get(flow, "state", &state, NULL);
     NP_ASSERT_EQUAL(state, FLOW_CLOSED);
+    g_inet_flow_expire(table,
+                       flow->timestamp + (G_INET_FLOW_DEFAULT_CLOSED_TIMEOUT * 1000000));
 
     /* Always expect flow to expire when it is closed */
     g_object_get(table, "size", &size, NULL);
@@ -1141,6 +1142,7 @@ void test_flow_tcp_state_syn_rst()
     GInetFlow *flow;
     guint state = FLOW_CLOSED;
     guint64 size;
+    guint64 ts;
 
     setup_test();
     NP_ASSERT_NOT_NULL((table = g_inet_flow_table_new()));
@@ -1163,43 +1165,8 @@ void test_flow_tcp_state_syn_rst()
     NP_ASSERT_NOT_NULL((flow = g_inet_flow_get_full(table, test_buffer, len, 0, 1, TRUE)));
     g_object_get(flow, "state", &state, NULL);
     NP_ASSERT_EQUAL(state, FLOW_CLOSED);
-
-    /* Always expect flow to expire when it is closed */
-    g_object_get(table, "size", &size, NULL);
-    NP_ASSERT_EQUAL(size, 0);
-
-    g_object_unref(table);
-}
-
-void test_flow_tcp_state_many_syn()
-{
-    GInetFlowTable *table;
-    GInetFlow *flow;
-    guint state = FLOW_CLOSED;
-    guint64 size;
-
-    setup_test();
-    NP_ASSERT_NOT_NULL((table = g_inet_flow_table_new()));
-
-    /* 3 Incoming TCP SYN Packets in succession */
-    guint8 *p = build_pkt_tcp(test_buffer, ETH_PROTOCOL_IP, IP_PROTOCOL_TCP, FALSE,
-                              TEST_SPORT, TEST_DPORT, SYN);
-    guint len = (guint) (p - test_buffer);
-
-    NP_ASSERT_NOT_NULL((flow = g_inet_flow_get_full(table, test_buffer, len, 0, 0, TRUE)));
-    g_object_get(flow, "state", &state, NULL);
-    NP_ASSERT_EQUAL(state, FLOW_NEW);
-
-    g_object_get(table, "size", &size, NULL);
-    NP_ASSERT_EQUAL(size, 1);
-
-    NP_ASSERT_NOT_NULL((flow = g_inet_flow_get_full(table, test_buffer, len, 0, 1, TRUE)));
-    g_object_get(flow, "state", &state, NULL);
-    NP_ASSERT_EQUAL(state, FLOW_NEW);
-
-    NP_ASSERT_NOT_NULL((flow = g_inet_flow_get_full(table, test_buffer, len, 0, 2, TRUE)));
-    g_object_get(flow, "state", &state, NULL);
-    NP_ASSERT_EQUAL(state, FLOW_CLOSED);
+    g_inet_flow_expire(table,
+                       flow->timestamp + (G_INET_FLOW_DEFAULT_CLOSED_TIMEOUT * 1000000));
 
     /* Always expect flow to expire when it is closed */
     g_object_get(table, "size", &size, NULL);
@@ -1214,6 +1181,7 @@ void test_flow_tcp_state_syn_synack_rst()
     GInetFlow *flow;
     guint state = FLOW_CLOSED;
     guint64 size;
+    guint64 ts;
 
     setup_test();
     NP_ASSERT_NOT_NULL((table = g_inet_flow_table_new()));
@@ -1244,6 +1212,8 @@ void test_flow_tcp_state_syn_synack_rst()
     NP_ASSERT_NOT_NULL((flow = g_inet_flow_get_full(table, test_buffer, len, 0, 2, TRUE)));
     g_object_get(flow, "state", &state, NULL);
     NP_ASSERT_EQUAL(state, FLOW_CLOSED);
+    g_inet_flow_expire(table,
+                       flow->timestamp + (G_INET_FLOW_DEFAULT_CLOSED_TIMEOUT * 1000000));
 
     /* Always expect flow to expire when it is closed */
     g_object_get(table, "size", &size, NULL);
@@ -1258,6 +1228,7 @@ void test_flow_tcp_state_fin_rst()
     GInetFlow *flow;
     guint state = FLOW_CLOSED;
     guint64 size;
+    guint64 ts;
 
     setup_test();
     NP_ASSERT_NOT_NULL((table = g_inet_flow_table_new()));
@@ -1296,6 +1267,8 @@ void test_flow_tcp_state_fin_rst()
     NP_ASSERT_NOT_NULL((flow = g_inet_flow_get_full(table, test_buffer, len, 0, 3, TRUE)));
     g_object_get(flow, "state", &state, NULL);
     NP_ASSERT_EQUAL(state, FLOW_CLOSED);
+    g_inet_flow_expire(table,
+                       flow->timestamp + (G_INET_FLOW_DEFAULT_CLOSED_TIMEOUT * 1000000));
 
     /* Always expect flow to expire when it is closed */
     g_object_get(table, "size", &size, NULL);
@@ -1311,6 +1284,7 @@ void test_flow_tcp_state_syn_timeout()
     GInetFlow *flow;
     guint state = FLOW_CLOSED;
     guint64 size;
+    guint64 ts;
 
     setup_test();
     NP_ASSERT_NOT_NULL((table = g_inet_flow_table_new()));
@@ -1320,24 +1294,15 @@ void test_flow_tcp_state_syn_timeout()
                               TEST_SPORT, TEST_DPORT, SYN);
     guint len = (guint) (p - test_buffer);
 
-    /* Set packet timestamp close to timeout */
+    /* Set packet timestamp */
     NP_ASSERT_NOT_NULL((flow =
-                        g_inet_flow_get_full(table, test_buffer, len, 0,
-                                             now +
-                                             (G_INET_FLOW_DEFAULT_NEW_TIMEOUT * 1000000) -
-                                             1, TRUE)));
+                        g_inet_flow_get_full(table, test_buffer, len, 0, now, TRUE)));
     g_object_get(flow, "state", &state, NULL);
     NP_ASSERT_EQUAL(state, FLOW_NEW);
 
     g_object_get(table, "size", &size, NULL);
     NP_ASSERT_EQUAL(size, 1);
-
-    /* 2-microsecond sleep */
-    g_usleep(2);
-
-    /* Flow should close upon timeout */
-    g_object_get(flow, "state", &state, NULL);
-    NP_ASSERT_EQUAL(state, FLOW_CLOSED);
+    g_inet_flow_expire(table, now + (G_INET_FLOW_DEFAULT_NEW_TIMEOUT * 1000000));
 
     /* Always expect flow to expire when it is closed */
     g_object_get(table, "size", &size, NULL);
@@ -1353,6 +1318,7 @@ void test_flow_tcp_state_syn_synack_timeout()
     GInetFlow *flow;
     guint state = FLOW_CLOSED;
     guint64 size;
+    guint64 ts;
 
     setup_test();
     NP_ASSERT_NOT_NULL((table = g_inet_flow_table_new()));
@@ -1374,21 +1340,12 @@ void test_flow_tcp_state_syn_synack_timeout()
     p = build_pkt_tcp(test_buffer, ETH_PROTOCOL_IP, IP_PROTOCOL_TCP, FALSE,
                       TEST_DPORT, TEST_SPORT, SYN_ACK);
     len = (guint) (p - test_buffer);
-    /* Set packet timestamp close to timeout */
+    /* Set packet timestamp */
     NP_ASSERT_NOT_NULL((flow =
-                        g_inet_flow_get_full(table, test_buffer, len, 0,
-                                             now +
-                                             (G_INET_FLOW_DEFAULT_OPEN_TIMEOUT * 1000000) -
-                                             1, TRUE)));
+                        g_inet_flow_get_full(table, test_buffer, len, 0, now, TRUE)));
     g_object_get(flow, "state", &state, NULL);
     NP_ASSERT_EQUAL(state, FLOW_OPEN);
-
-    /* 2-microsecond sleep */
-    g_usleep(2);
-
-    /* Flow should close upon timeout */
-    g_object_get(flow, "state", &state, NULL);
-    NP_ASSERT_EQUAL(state, FLOW_CLOSED);
+    g_inet_flow_expire(table, now + (G_INET_FLOW_DEFAULT_OPEN_TIMEOUT * 1000000));
 
     /* Always expect flow to expire when it is closed */
     g_object_get(table, "size", &size, NULL);
@@ -1404,6 +1361,7 @@ void test_flow_tcp_state_fin_timeout()
     GInetFlow *flow;
     guint state = FLOW_CLOSED;
     guint64 size;
+    guint64 ts;
 
     setup_test();
     NP_ASSERT_NOT_NULL((table = g_inet_flow_table_new()));
@@ -1431,20 +1389,13 @@ void test_flow_tcp_state_fin_timeout()
     p = build_pkt_tcp(test_buffer, ETH_PROTOCOL_IP, IP_PROTOCOL_TCP, FALSE,
                       TEST_SPORT, TEST_DPORT, FIN);
     len = (guint) (p - test_buffer);
-    /* Set packet timestamp close to timeout */
+    /* Set packet timestamp */
     NP_ASSERT_NOT_NULL((flow = g_inet_flow_get_full(table, test_buffer, len, 0,
-                                                    now +
-                                                    (G_INET_FLOW_DEFAULT_OPEN_TIMEOUT *
-                                                     1000000) - 1, TRUE)));
+                                                    now, TRUE)));
     g_object_get(flow, "state", &state, NULL);
     NP_ASSERT_EQUAL(state, FLOW_OPEN);
 
-    /* 2-microsecond sleep */
-    g_usleep(2);
-
-    /* Flow should close upon timeout */
-    g_object_get(flow, "state", &state, NULL);
-    NP_ASSERT_EQUAL(state, FLOW_CLOSED);
+    g_inet_flow_expire(table, now + (G_INET_FLOW_DEFAULT_OPEN_TIMEOUT * 1000000));
 
     /* Always expect flow to expire when it is closed */
     g_object_get(table, "size", &size, NULL);
