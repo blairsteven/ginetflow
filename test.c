@@ -88,6 +88,29 @@ static guint8 *build_hdr_vlan(guint8 * buffer,
     return p;
 }
 
+static guint8 *build_hdr_bad_ipv4(guint8 * buffer, guint next_ip_protocol, gboolean reverse)
+{
+    guint8 *p = buffer;
+    ip_hdr_t *ip = (ip_hdr_t *) p;
+    ip->ihl_version = 0x79;
+    ip->tos = 0x00;
+    ip->tot_len = 0x0000;
+    ip->id = 0x1234;
+    ip->frag_off = 0x0000;
+    ip->ttl = 0xff;
+    ip->protocol = next_ip_protocol;
+    ip->check = 0x00;
+    if (reverse) {
+        ip->saddr = TEST_DADDR;
+        ip->daddr = TEST_SADDR;
+    } else {
+        ip->saddr = TEST_SADDR;
+        ip->daddr = TEST_DADDR;
+    }
+    p += sizeof(ip_hdr_t);
+    return p;
+}
+
 static guint8 *build_hdr_ipv4(guint8 * buffer, guint next_ip_protocol, gboolean reverse)
 {
     guint8 *p = buffer;
@@ -115,7 +138,7 @@ static guint8 *build_hdr_ipv6(guint8 * buffer, guint next_ip_protocol, gboolean 
 {
     guint8 *p = buffer;
     ip6_hdr_t *ip6 = (ip6_hdr_t *) p;
-    ip6->ver_tc_fl = 0x600d684a;
+    ip6->ver_tc_fl = g_htons(0x600d684a);
     ip6->pay_len = 0x28;
     ip6->next_hdr = next_ip_protocol;
     ip6->hop_limit = 0x40;
@@ -223,10 +246,6 @@ static guint8 *build_hdr_ipv6_ext(guint8 * buffer,
 static guint8 *build_hdr_pppoe(guint8 * buffer, guint next_ip_protocol, guint16 ppp_proto,
                                gboolean reverse)
 {
-    if (ppp_proto != PPP_PROTOCOL_IPV4 && ppp_proto != PPP_PROTOCOL_IPV6) {
-        return buffer;
-    }
-
     guint8 *p = buffer;
     pppoe_sess_hdr_t *pppoe = (pppoe_sess_hdr_t *) p;
     pppoe->ver_type = 0x11;
@@ -573,10 +592,10 @@ void test_flow_parse_ipv6_ext()
     NP_ASSERT(flow_parse_ipv6(&test_flow, test_buffer, len));
 
     len = make_pkt_ipv6_ext(test_buffer, IP_PROTOCOL_ESP, FALSE);
-    NP_ASSERT_FALSE(flow_parse_ipv6(&test_flow, test_buffer, len));
+    NP_ASSERT(flow_parse_ipv6(&test_flow, test_buffer, len));
 
     len = make_pkt_ipv6_ext(test_buffer, IP_PROTOCOL_NO_NEXT_HDR, FALSE);
-    NP_ASSERT_FALSE(flow_parse_ipv6(&test_flow, test_buffer, len));
+    NP_ASSERT(flow_parse_ipv6(&test_flow, test_buffer, len));
 }
 
 void test_flow_parse_unsupported_eth_protocols()
@@ -606,11 +625,11 @@ void test_flow_parse_not_ipv6_ext()
 
     /* KRYPTOLAN */
     guint len = make_pkt_ipv6_ext(test_buffer, 65, FALSE);
-    NP_ASSERT_FALSE(flow_parse_ipv6(&test_flow, test_buffer, len));
+    NP_ASSERT(flow_parse_ipv6(&test_flow, test_buffer, len));
 
     /* IGMP */
     len = make_pkt_ipv6_ext(test_buffer, 2, FALSE);
-    NP_ASSERT_FALSE(flow_parse_ipv6(&test_flow, test_buffer, len));
+    NP_ASSERT(flow_parse_ipv6(&test_flow, test_buffer, len));
 }
 
 void test_flow_parse_unsupported_transport_protocols()
@@ -619,19 +638,19 @@ void test_flow_parse_unsupported_transport_protocols()
 
     /* CRUDP */
     guint len = make_pkt(test_buffer, ETH_PROTOCOL_IP, 127);
-    NP_ASSERT_FALSE(flow_parse(&test_flow, test_buffer, len, 0));
+    NP_ASSERT(flow_parse(&test_flow, test_buffer, len, 0));
 
     /* UDPLite */
     len = make_pkt(test_buffer, ETH_PROTOCOL_IP, 136);
-    NP_ASSERT_FALSE(flow_parse(&test_flow, test_buffer, len, 0));
+    NP_ASSERT(flow_parse(&test_flow, test_buffer, len, 0));
 
     /* IL */
-    len = make_pkt(test_buffer, ETH_PROTOCOL_IP, 40);
-    NP_ASSERT_FALSE(flow_parse_ipv6(&test_flow, test_buffer, len));
+    len = make_pkt(test_buffer, ETH_PROTOCOL_IPV6, 40);
+    NP_ASSERT(flow_parse(&test_flow, test_buffer, len, 0));
 
     /* IPv4 SCTP */
     len = make_pkt(test_buffer, ETH_PROTOCOL_IP, IP_PROTOCOL_SCTP);
-    NP_ASSERT_FALSE(flow_parse_ipv6(&test_flow, test_buffer, len));
+    NP_ASSERT(flow_parse(&test_flow, test_buffer, len, 0));
 }
 
 void test_flow_parse_unsupported_ppp_protocols()
@@ -859,13 +878,15 @@ void test_flow_properties()
 
     NP_ASSERT_NOT_NULL((table = g_inet_flow_table_new()));
     guint len = make_pkt(test_buffer, ETH_PROTOCOL_IP, IP_PROTOCOL_TCP);
-    NP_ASSERT_NOT_NULL((flow = g_inet_flow_get_full(table, test_buffer, len, 0, 0, TRUE)));
+    NP_ASSERT_NOT_NULL((flow =
+                        g_inet_flow_get_full(table, test_buffer, len, 0, 0, TRUE, TRUE)));
     g_object_get(flow, "state", &state, NULL);
     NP_ASSERT_EQUAL(state, FLOW_NEW);
 
     /* Update flow */
     len = make_pkt(test_buffer, ETH_PROTOCOL_IP, IP_PROTOCOL_TCP);
-    NP_ASSERT_NOT_NULL((flow = g_inet_flow_get_full(table, test_buffer, len, 0, 0, TRUE)));
+    NP_ASSERT_NOT_NULL((flow =
+                        g_inet_flow_get_full(table, test_buffer, len, 0, 0, TRUE, TRUE)));
 
     g_object_get(flow, "packets", &packets, "hash", &hash, "protocol", &protocol, NULL);
     NP_ASSERT_EQUAL(packets, 2);
@@ -902,13 +923,16 @@ void test_flow_table_properties()
     setup_test();
     NP_ASSERT_NOT_NULL((table = g_inet_flow_table_new()));
     guint len = make_pkt(test_buffer, ETH_PROTOCOL_IP, IP_PROTOCOL_UDP);
-    NP_ASSERT_NOT_NULL((flow = g_inet_flow_get_full(table, test_buffer, len, 0, 0, TRUE)));
+    NP_ASSERT_NOT_NULL((flow =
+                        g_inet_flow_get_full(table, test_buffer, len, 0, 0, TRUE, TRUE)));
 
     len = make_pkt(test_buffer, ETH_PROTOCOL_IP, IP_PROTOCOL_TCP);
-    NP_ASSERT_NOT_NULL((flow = g_inet_flow_get_full(table, test_buffer, len, 0, 0, TRUE)));
+    NP_ASSERT_NOT_NULL((flow =
+                        g_inet_flow_get_full(table, test_buffer, len, 0, 0, TRUE, TRUE)));
 
     len = make_pkt(test_buffer, ETH_PROTOCOL_IP, IP_PROTOCOL_TCP);
-    NP_ASSERT_NOT_NULL((flow = g_inet_flow_get_full(table, test_buffer, len, 0, 0, TRUE)));
+    NP_ASSERT_NOT_NULL((flow =
+                        g_inet_flow_get_full(table, test_buffer, len, 0, 0, TRUE, TRUE)));
 
     g_object_get(table, "size", &size, "hits", &hits, "misses", &misses, NULL);
     NP_ASSERT_EQUAL(size, 2);
@@ -940,10 +964,12 @@ void test_flow_foreach()
     setup_test();
     NP_ASSERT_NOT_NULL((table = g_inet_flow_table_new()));
     guint len = make_pkt(test_buffer, ETH_PROTOCOL_IP, IP_PROTOCOL_UDP);
-    NP_ASSERT_NOT_NULL((flow = g_inet_flow_get_full(table, test_buffer, len, 0, 0, TRUE)));
+    NP_ASSERT_NOT_NULL((flow =
+                        g_inet_flow_get_full(table, test_buffer, len, 0, 0, TRUE, TRUE)));
 
     len = make_pkt(test_buffer, ETH_PROTOCOL_IPV6, IP_PROTOCOL_TCP);
-    NP_ASSERT_NOT_NULL((flow = g_inet_flow_get_full(table, test_buffer, len, 0, 0, TRUE)));
+    NP_ASSERT_NOT_NULL((flow =
+                        g_inet_flow_get_full(table, test_buffer, len, 0, 0, TRUE, TRUE)));
 
     g_inet_flow_foreach(table, (GIFFunc) flow_print_protocol, NULL);
 
@@ -957,7 +983,7 @@ void test_flow_create()
     setup_test();
     NP_ASSERT_NOT_NULL(table);
     guint len = make_pkt(test_buffer, ETH_PROTOCOL_IP, IP_PROTOCOL_UDP);
-    GInetFlow *flow = g_inet_flow_get_full(table, test_buffer, len, 0, now, TRUE);
+    GInetFlow *flow = g_inet_flow_get_full(table, test_buffer, len, 0, now, TRUE, TRUE);
     NP_ASSERT_NOT_NULL(flow);
     guint64 size;
     g_object_get(table, "size", &size, NULL);
@@ -981,12 +1007,12 @@ void test_flow_table_size()
 
     guint pk1 = make_pkt(test_buffer, ETH_PROTOCOL_IP, IP_PROTOCOL_UDP);
     GInetFlow *flow1 =
-        g_inet_flow_get_full(table, test_buffer, pk1, 0, get_time_us(), TRUE);
+        g_inet_flow_get_full(table, test_buffer, pk1, 0, get_time_us(), TRUE, TRUE);
     NP_ASSERT_NOT_NULL(flow1);
 
     guint pk2 = make_pkt(test_buffer, ETH_PROTOCOL_IP, IP_PROTOCOL_TCP);
     GInetFlow *flow2 =
-        g_inet_flow_get_full(table, test_buffer, pk2, 0, get_time_us(), TRUE);
+        g_inet_flow_get_full(table, test_buffer, pk2, 0, get_time_us(), TRUE, TRUE);
     NP_ASSERT_NULL(flow2);
 
     g_object_unref(table);
@@ -1003,7 +1029,7 @@ void test_flow_not_expired()
     NP_ASSERT_NOT_NULL(table = g_inet_flow_table_new());
     guint len = make_pkt(test_buffer, ETH_PROTOCOL_IP, IP_PROTOCOL_UDP);
     NP_ASSERT_NOT_NULL((flow =
-                        g_inet_flow_get_full(table, test_buffer, len, 0, now, TRUE)));
+                        g_inet_flow_get_full(table, test_buffer, len, 0, now, TRUE, TRUE)));
     NP_ASSERT_NULL(flow = g_inet_flow_expire
                    (table, now + (G_INET_FLOW_DEFAULT_NEW_TIMEOUT * 1000000) - 1));
     g_object_get(table, "size", &size, NULL);
@@ -1024,7 +1050,7 @@ void test_flow_expired()
     NP_ASSERT_NOT_NULL((table = g_inet_flow_table_new()));
     guint len = make_pkt(test_buffer, ETH_PROTOCOL_IP, IP_PROTOCOL_UDP);
     NP_ASSERT_NOT_NULL((flow =
-                        g_inet_flow_get_full(table, test_buffer, len, 0, now, TRUE)));
+                        g_inet_flow_get_full(table, test_buffer, len, 0, now, TRUE, TRUE)));
     NP_ASSERT_NOT_NULL(g_inet_flow_expire
                        (table, now + (G_INET_FLOW_DEFAULT_NEW_TIMEOUT * 1000000)));
     g_object_get(table, "size", &size, NULL);
@@ -1041,7 +1067,8 @@ void test_flow_tcp_new()
     setup_test();
     NP_ASSERT_NOT_NULL((table = g_inet_flow_table_new()));
     guint len = make_pkt(test_buffer, ETH_PROTOCOL_IP, IP_PROTOCOL_TCP);
-    NP_ASSERT_NOT_NULL((flow = g_inet_flow_get_full(table, test_buffer, len, 0, 0, TRUE)));
+    NP_ASSERT_NOT_NULL((flow =
+                        g_inet_flow_get_full(table, test_buffer, len, 0, 0, TRUE, TRUE)));
     g_object_get(flow, "state", &state, NULL);
     NP_ASSERT_EQUAL(state, FLOW_NEW);
 
@@ -1057,11 +1084,13 @@ void test_flow_tcp_update()
     setup_test();
     NP_ASSERT_NOT_NULL((table = g_inet_flow_table_new()));
     guint len = make_pkt(test_buffer, ETH_PROTOCOL_IP, IP_PROTOCOL_TCP);
-    NP_ASSERT_NOT_NULL((flow = g_inet_flow_get_full(table, test_buffer, len, 0, 0, TRUE)));
+    NP_ASSERT_NOT_NULL((flow =
+                        g_inet_flow_get_full(table, test_buffer, len, 0, 0, TRUE, TRUE)));
 
     /* Update flow */
     len = make_pkt(test_buffer, ETH_PROTOCOL_IP, IP_PROTOCOL_TCP);
-    NP_ASSERT_NOT_NULL((flow = g_inet_flow_get_full(table, test_buffer, len, 0, 0, TRUE)));
+    NP_ASSERT_NOT_NULL((flow =
+                        g_inet_flow_get_full(table, test_buffer, len, 0, 0, TRUE, TRUE)));
 
     /* Flow not updated */
     len = make_pkt(test_buffer, ETH_PROTOCOL_IP, IP_PROTOCOL_TCP);
@@ -1096,7 +1125,8 @@ void test_flow_tcp_state_basic()
     guint8 *p = build_pkt_tcp(test_buffer, ETH_PROTOCOL_IP, IP_PROTOCOL_TCP, FALSE,
                               TEST_SPORT, TEST_DPORT, SYN);
     guint len = (guint) (p - test_buffer);
-    NP_ASSERT_NOT_NULL((flow = g_inet_flow_get_full(table, test_buffer, len, 0, 0, TRUE)));
+    NP_ASSERT_NOT_NULL((flow =
+                        g_inet_flow_get_full(table, test_buffer, len, 0, 0, TRUE, TRUE)));
     g_object_get(flow, "state", &state, NULL);
     NP_ASSERT_EQUAL(state, FLOW_NEW);
 
@@ -1107,7 +1137,8 @@ void test_flow_tcp_state_basic()
     p = build_pkt_tcp(test_buffer, ETH_PROTOCOL_IP, IP_PROTOCOL_TCP, FALSE,
                       TEST_DPORT, TEST_SPORT, SYN_ACK);
     len = (guint) (p - test_buffer);
-    NP_ASSERT_NOT_NULL((flow = g_inet_flow_get_full(table, test_buffer, len, 0, 1, TRUE)));
+    NP_ASSERT_NOT_NULL((flow =
+                        g_inet_flow_get_full(table, test_buffer, len, 0, 1, TRUE, TRUE)));
     g_object_get(flow, "state", &state, NULL);
     NP_ASSERT_EQUAL(state, FLOW_OPEN);
 
@@ -1115,7 +1146,8 @@ void test_flow_tcp_state_basic()
     p = build_pkt_tcp(test_buffer, ETH_PROTOCOL_IP, IP_PROTOCOL_TCP, FALSE,
                       TEST_SPORT, TEST_DPORT, FIN);
     len = (guint) (p - test_buffer);
-    NP_ASSERT_NOT_NULL((flow = g_inet_flow_get_full(table, test_buffer, len, 0, 2, TRUE)));
+    NP_ASSERT_NOT_NULL((flow =
+                        g_inet_flow_get_full(table, test_buffer, len, 0, 2, TRUE, TRUE)));
     g_object_get(flow, "state", &state, NULL);
     NP_ASSERT_EQUAL(state, FLOW_OPEN);
 
@@ -1123,7 +1155,8 @@ void test_flow_tcp_state_basic()
     p = build_pkt_tcp(test_buffer, ETH_PROTOCOL_IP, IP_PROTOCOL_TCP, FALSE,
                       TEST_DPORT, TEST_SPORT, FIN_ACK);
     len = (guint) (p - test_buffer);
-    NP_ASSERT_NOT_NULL((flow = g_inet_flow_get_full(table, test_buffer, len, 0, 3, TRUE)));
+    NP_ASSERT_NOT_NULL((flow =
+                        g_inet_flow_get_full(table, test_buffer, len, 0, 3, TRUE, TRUE)));
     g_object_get(flow, "state", &state, NULL);
     NP_ASSERT_EQUAL(state, FLOW_CLOSED);
     g_inet_flow_expire(table,
@@ -1151,7 +1184,8 @@ void test_flow_tcp_state_syn_rst()
     guint8 *p = build_pkt_tcp(test_buffer, ETH_PROTOCOL_IP, IP_PROTOCOL_TCP, FALSE,
                               TEST_SPORT, TEST_DPORT, SYN);
     guint len = (guint) (p - test_buffer);
-    NP_ASSERT_NOT_NULL((flow = g_inet_flow_get_full(table, test_buffer, len, 0, 0, TRUE)));
+    NP_ASSERT_NOT_NULL((flow =
+                        g_inet_flow_get_full(table, test_buffer, len, 0, 0, TRUE, TRUE)));
     g_object_get(flow, "state", &state, NULL);
     NP_ASSERT_EQUAL(state, FLOW_NEW);
 
@@ -1162,7 +1196,8 @@ void test_flow_tcp_state_syn_rst()
     p = build_pkt_tcp(test_buffer, ETH_PROTOCOL_IP, IP_PROTOCOL_TCP, FALSE,
                       TEST_SPORT, TEST_DPORT, RST);
     len = (guint) (p - test_buffer);
-    NP_ASSERT_NOT_NULL((flow = g_inet_flow_get_full(table, test_buffer, len, 0, 1, TRUE)));
+    NP_ASSERT_NOT_NULL((flow =
+                        g_inet_flow_get_full(table, test_buffer, len, 0, 1, TRUE, TRUE)));
     g_object_get(flow, "state", &state, NULL);
     NP_ASSERT_EQUAL(state, FLOW_CLOSED);
     g_inet_flow_expire(table,
@@ -1190,7 +1225,8 @@ void test_flow_tcp_state_syn_synack_rst()
     guint8 *p = build_pkt_tcp(test_buffer, ETH_PROTOCOL_IP, IP_PROTOCOL_TCP, FALSE,
                               TEST_SPORT, TEST_DPORT, SYN);
     guint len = (guint) (p - test_buffer);
-    NP_ASSERT_NOT_NULL((flow = g_inet_flow_get_full(table, test_buffer, len, 0, 0, TRUE)));
+    NP_ASSERT_NOT_NULL((flow =
+                        g_inet_flow_get_full(table, test_buffer, len, 0, 0, TRUE, TRUE)));
     g_object_get(flow, "state", &state, NULL);
     NP_ASSERT_EQUAL(state, FLOW_NEW);
 
@@ -1201,7 +1237,8 @@ void test_flow_tcp_state_syn_synack_rst()
     p = build_pkt_tcp(test_buffer, ETH_PROTOCOL_IP, IP_PROTOCOL_TCP, FALSE,
                       TEST_DPORT, TEST_SPORT, SYN_ACK);
     len = (guint) (p - test_buffer);
-    NP_ASSERT_NOT_NULL((flow = g_inet_flow_get_full(table, test_buffer, len, 0, 1, TRUE)));
+    NP_ASSERT_NOT_NULL((flow =
+                        g_inet_flow_get_full(table, test_buffer, len, 0, 1, TRUE, TRUE)));
     g_object_get(flow, "state", &state, NULL);
     NP_ASSERT_EQUAL(state, FLOW_OPEN);
 
@@ -1209,7 +1246,8 @@ void test_flow_tcp_state_syn_synack_rst()
     p = build_pkt_tcp(test_buffer, ETH_PROTOCOL_IP, IP_PROTOCOL_TCP, FALSE,
                       TEST_SPORT, TEST_DPORT, RST);
     len = (guint) (p - test_buffer);
-    NP_ASSERT_NOT_NULL((flow = g_inet_flow_get_full(table, test_buffer, len, 0, 2, TRUE)));
+    NP_ASSERT_NOT_NULL((flow =
+                        g_inet_flow_get_full(table, test_buffer, len, 0, 2, TRUE, TRUE)));
     g_object_get(flow, "state", &state, NULL);
     NP_ASSERT_EQUAL(state, FLOW_CLOSED);
     g_inet_flow_expire(table,
@@ -1237,7 +1275,8 @@ void test_flow_tcp_state_fin_rst()
     guint8 *p = build_pkt_tcp(test_buffer, ETH_PROTOCOL_IP, IP_PROTOCOL_TCP, FALSE,
                               TEST_SPORT, TEST_DPORT, SYN);
     guint len = (guint) (p - test_buffer);
-    NP_ASSERT_NOT_NULL((flow = g_inet_flow_get_full(table, test_buffer, len, 0, 0, TRUE)));
+    NP_ASSERT_NOT_NULL((flow =
+                        g_inet_flow_get_full(table, test_buffer, len, 0, 0, TRUE, TRUE)));
     g_object_get(flow, "state", &state, NULL);
     NP_ASSERT_EQUAL(state, FLOW_NEW);
 
@@ -1248,7 +1287,8 @@ void test_flow_tcp_state_fin_rst()
     p = build_pkt_tcp(test_buffer, ETH_PROTOCOL_IP, IP_PROTOCOL_TCP, FALSE,
                       TEST_DPORT, TEST_SPORT, SYN_ACK);
     len = (guint) (p - test_buffer);
-    NP_ASSERT_NOT_NULL((flow = g_inet_flow_get_full(table, test_buffer, len, 0, 1, TRUE)));
+    NP_ASSERT_NOT_NULL((flow =
+                        g_inet_flow_get_full(table, test_buffer, len, 0, 1, TRUE, TRUE)));
     g_object_get(flow, "state", &state, NULL);
     NP_ASSERT_EQUAL(state, FLOW_OPEN);
 
@@ -1256,7 +1296,8 @@ void test_flow_tcp_state_fin_rst()
     p = build_pkt_tcp(test_buffer, ETH_PROTOCOL_IP, IP_PROTOCOL_TCP, FALSE,
                       TEST_SPORT, TEST_DPORT, FIN);
     len = (guint) (p - test_buffer);
-    NP_ASSERT_NOT_NULL((flow = g_inet_flow_get_full(table, test_buffer, len, 0, 2, TRUE)));
+    NP_ASSERT_NOT_NULL((flow =
+                        g_inet_flow_get_full(table, test_buffer, len, 0, 2, TRUE, TRUE)));
     g_object_get(flow, "state", &state, NULL);
     NP_ASSERT_EQUAL(state, FLOW_OPEN);
 
@@ -1264,7 +1305,8 @@ void test_flow_tcp_state_fin_rst()
     p = build_pkt_tcp(test_buffer, ETH_PROTOCOL_IP, IP_PROTOCOL_TCP, FALSE,
                       TEST_SPORT, TEST_DPORT, RST);
     len = (guint) (p - test_buffer);
-    NP_ASSERT_NOT_NULL((flow = g_inet_flow_get_full(table, test_buffer, len, 0, 3, TRUE)));
+    NP_ASSERT_NOT_NULL((flow =
+                        g_inet_flow_get_full(table, test_buffer, len, 0, 3, TRUE, TRUE)));
     g_object_get(flow, "state", &state, NULL);
     NP_ASSERT_EQUAL(state, FLOW_CLOSED);
     g_inet_flow_expire(table,
@@ -1296,7 +1338,7 @@ void test_flow_tcp_state_syn_timeout()
 
     /* Set packet timestamp */
     NP_ASSERT_NOT_NULL((flow =
-                        g_inet_flow_get_full(table, test_buffer, len, 0, now, TRUE)));
+                        g_inet_flow_get_full(table, test_buffer, len, 0, now, TRUE, TRUE)));
     g_object_get(flow, "state", &state, NULL);
     NP_ASSERT_EQUAL(state, FLOW_NEW);
 
@@ -1329,7 +1371,7 @@ void test_flow_tcp_state_syn_synack_timeout()
     guint len = (guint) (p - test_buffer);
 
     NP_ASSERT_NOT_NULL((flow =
-                        g_inet_flow_get_full(table, test_buffer, len, 0, now, TRUE)));
+                        g_inet_flow_get_full(table, test_buffer, len, 0, now, TRUE, TRUE)));
     g_object_get(flow, "state", &state, NULL);
     NP_ASSERT_EQUAL(state, FLOW_NEW);
 
@@ -1342,7 +1384,7 @@ void test_flow_tcp_state_syn_synack_timeout()
     len = (guint) (p - test_buffer);
     /* Set packet timestamp */
     NP_ASSERT_NOT_NULL((flow =
-                        g_inet_flow_get_full(table, test_buffer, len, 0, now, TRUE)));
+                        g_inet_flow_get_full(table, test_buffer, len, 0, now, TRUE, TRUE)));
     g_object_get(flow, "state", &state, NULL);
     NP_ASSERT_EQUAL(state, FLOW_OPEN);
     g_inet_flow_expire(table, now + (G_INET_FLOW_DEFAULT_OPEN_TIMEOUT * 1000000));
@@ -1370,7 +1412,8 @@ void test_flow_tcp_state_fin_timeout()
     guint8 *p = build_pkt_tcp(test_buffer, ETH_PROTOCOL_IP, IP_PROTOCOL_TCP, FALSE,
                               TEST_SPORT, TEST_DPORT, SYN);
     guint len = (guint) (p - test_buffer);
-    NP_ASSERT_NOT_NULL((flow = g_inet_flow_get_full(table, test_buffer, len, 0, 0, TRUE)));
+    NP_ASSERT_NOT_NULL((flow =
+                        g_inet_flow_get_full(table, test_buffer, len, 0, 0, TRUE, TRUE)));
     g_object_get(flow, "state", &state, NULL);
     NP_ASSERT_EQUAL(state, FLOW_NEW);
 
@@ -1381,7 +1424,8 @@ void test_flow_tcp_state_fin_timeout()
     p = build_pkt_tcp(test_buffer, ETH_PROTOCOL_IP, IP_PROTOCOL_TCP, FALSE,
                       TEST_DPORT, TEST_SPORT, SYN_ACK);
     len = (guint) (p - test_buffer);
-    NP_ASSERT_NOT_NULL((flow = g_inet_flow_get_full(table, test_buffer, len, 0, 1, TRUE)));
+    NP_ASSERT_NOT_NULL((flow =
+                        g_inet_flow_get_full(table, test_buffer, len, 0, 1, TRUE, TRUE)));
     g_object_get(flow, "state", &state, NULL);
     NP_ASSERT_EQUAL(state, FLOW_OPEN);
 
@@ -1391,7 +1435,7 @@ void test_flow_tcp_state_fin_timeout()
     len = (guint) (p - test_buffer);
     /* Set packet timestamp */
     NP_ASSERT_NOT_NULL((flow = g_inet_flow_get_full(table, test_buffer, len, 0,
-                                                    now, TRUE)));
+                                                    now, TRUE, TRUE)));
     g_object_get(flow, "state", &state, NULL);
     NP_ASSERT_EQUAL(state, FLOW_OPEN);
 
@@ -1402,4 +1446,50 @@ void test_flow_tcp_state_fin_timeout()
     NP_ASSERT_EQUAL(size, 0);
 
     g_object_unref(table);
+}
+
+void test_flow_ipv4_encap()
+{
+    GInetFlowTable *table;
+    GInetFlow *flow;
+
+    setup_test();
+    NP_ASSERT_NOT_NULL((table = g_inet_flow_table_new()));
+
+    guint8 *p = build_hdr_ip(test_buffer, ETH_PROTOCOL_IP, IP_PROTOCOL_TCP, FALSE);
+    p = build_hdr_after_ip(p, IP_PROTOCOL_TCP, FALSE);
+    guint len = (guint) (p - test_buffer);
+
+    NP_ASSERT_NOT_NULL((flow =
+                        g_inet_flow_get_full(table, test_buffer, len, 0, 0, TRUE, FALSE)));
+    g_object_unref(table);
+}
+
+void test_flow_ipv6_encap()
+{
+    GInetFlow *flow;
+    GInetFlowTable *table;
+
+    setup_test();
+    NP_ASSERT_NOT_NULL((table = g_inet_flow_table_new()));
+
+    guint8 *p = build_hdr_ip(test_buffer, ETH_PROTOCOL_IPV6, IP_PROTOCOL_TCP, FALSE);
+    p = build_hdr_after_ip(p, IP_PROTOCOL_TCP, FALSE);
+    guint len = (guint) (p - test_buffer);
+
+    NP_ASSERT_NOT_NULL((flow =
+                        g_inet_flow_get_full(table, test_buffer, len, 0, 0, TRUE, FALSE)));
+
+    g_object_unref(table);
+}
+
+void test_flow_bad_ip_version()
+{
+    setup_test();
+
+    guint8 *p = build_hdr_bad_ipv4(test_buffer, IP_PROTOCOL_TCP, FALSE);
+    p = build_hdr_after_ip(p, IP_PROTOCOL_TCP, FALSE);
+    guint len = (guint) (p - test_buffer);
+
+    NP_ASSERT_FALSE(flow_parse_ip(&test_flow, test_buffer, len, 0));
 }
