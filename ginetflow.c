@@ -438,6 +438,33 @@ static gboolean flow_parse_ipv6(GInetFlow * f, const guint8 * data, guint32 leng
     return TRUE;
 }
 
+static gboolean flow_parse_ip(GInetFlow * f, const guint8 * data, guint32 length,
+                              guint16 hash)
+{
+    guint8 version;
+
+    if (length < sizeof(version))
+        return FALSE;
+
+    version = *data;
+    version = 0x0f & (version >> 4);
+
+    if (version == 4) {
+        f->family = G_SOCKET_FAMILY_IPV4;
+        f->hash = hash;
+        if (!flow_parse_ipv4(f, data, length))
+            return FALSE;
+    } else if (version == 6) {
+        f->family = G_SOCKET_FAMILY_IPV6;
+        f->hash = hash;
+        if (!flow_parse_ipv6(f, data, length))
+            return FALSE;
+    } else {
+        DEBUG("Unsupported ip version: %d\n", version);
+        return FALSE;
+    }
+}
+
 static gboolean flow_parse(GInetFlow * f, const guint8 * data, guint32 length, guint16 hash)
 {
     ethernet_hdr_t *e;
@@ -475,15 +502,8 @@ static gboolean flow_parse(GInetFlow * f, const guint8 * data, guint32 length, g
         length -= sizeof(vlan_hdr_t);
         goto try_again;
     case ETH_PROTOCOL_IP:
-        f->family = G_SOCKET_FAMILY_IPV4;
-        f->hash = hash;
-        if (!flow_parse_ipv4(f, data, length))
-            return FALSE;
-        break;
     case ETH_PROTOCOL_IPV6:
-        f->family = G_SOCKET_FAMILY_IPV6;
-        f->hash = hash;
-        if (!flow_parse_ipv6(f, data, length))
+        if (!flow_parse_ip(f, data, length, hash))
             return FALSE;
         break;
     case ETH_PROTOCOL_PPPOE_SESS:
@@ -689,14 +709,42 @@ static void insert_flow_by_expiry(GInetFlowTable * table, GInetFlow * flow,
     table->list[index] = g_list_concat(&flow->list, table->list[index]);
 }
 
+GInetFlow *g_inet_flow_expire(GInetFlowTable * table, guint64 ts)
+{
+    GList *iter;
+
+    for (int i = 0; i < LIFETIME_COUNT; i++) {
+        guint64 timeout = (lifetime_values[i] * 1000000);
+        GList *first = g_list_first(table->list[i]);
+        if (first) {
+            GInetFlow *flow = (GInetFlow *) first->data;
+            if (flow->timestamp + timeout <= ts) {
+                table->list[i] = g_list_remove_link(table->list[i], &flow->list);
+                g_hash_table_remove(table->table, flow);
+                return flow;
+            }
+        }
+    }
+    return NULL;
+}
+
+GInetFlow *g_inet_flow_get(GInetFlowTable * table, const guint8 * frame, guint length)
+{
+    return g_inet_flow_get_full(table, frame, length, 0, 0, FALSE, TRUE);
+}
+
 GInetFlow *g_inet_flow_get_full(GInetFlowTable * table,
                                 const guint8 * frame, guint length,
-                                guint16 hash, guint64 timestamp, gboolean update)
+                                guint16 hash, guint64 timestamp, gboolean update, gboolean l2)
 {
     GInetFlow packet = { };
     GInetFlow *flow;
 
-    if (!flow_parse(&packet, frame, length, hash)) {
+    if (l2) {
+        if (!flow_parse(&packet, frame, length, hash)) {
+            return NULL;
+        }
+    } else if (!flow_parse_ip(&packet, frame, length, hash)) {
         return NULL;
     }
 
@@ -731,30 +779,6 @@ GInetFlow *g_inet_flow_get_full(GInetFlowTable * table,
         flow->packets++;
     }
     return flow;
-}
-
-GInetFlow *g_inet_flow_get(GInetFlowTable * table, const guint8 * frame, guint length)
-{
-    return g_inet_flow_get_full(table, frame, length, 0, 0, FALSE);
-}
-
-GInetFlow *g_inet_flow_expire(GInetFlowTable * table, guint64 ts)
-{
-    GList *iter;
-
-    for (int i = 0; i < LIFETIME_COUNT; i++) {
-        guint64 timeout = (lifetime_values[i] * 1000000);
-        GList *first = g_list_first(table->list[i]);
-        if (first) {
-            GInetFlow *flow = (GInetFlow *) first->data;
-            if (flow->timestamp + timeout <= ts) {
-                table->list[i] = g_list_remove_link(table->list[i], &flow->list);
-                g_hash_table_remove(table->table, flow);
-                return flow;
-            }
-        }
-    }
-    return NULL;
 }
 
 static void g_inet_flow_table_finalize(GObject * object)

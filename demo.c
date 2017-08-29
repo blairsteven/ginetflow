@@ -126,7 +126,7 @@ static void worker_func(gpointer a, gpointer b)
 
 static void process_frame(const uint8_t * frame, uint32_t length)
 {
-    GInetFlow *flow = g_inet_flow_get_full(table, frame, length, 0, 0, TRUE);
+    GInetFlow *flow = g_inet_flow_get_full(table, frame, length, 0, 0, TRUE, TRUE);
     if (flow) {
         guint hash = 0;
         Job *job = calloc(1, sizeof(Job));
