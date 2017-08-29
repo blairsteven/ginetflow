@@ -54,8 +54,9 @@ struct _GInetFlowClass {
 G_DEFINE_TYPE(GInetFlow, g_inet_flow, G_TYPE_OBJECT);
 
 static int lifetime_values[] = {
-    30,                         /* FLOW_NEW, FLOW_CLOSED */
-    300,                        /* FLOW_OPEN */
+    G_INET_FLOW_DEFAULT_CLOSED_TIMEOUT,
+    G_INET_FLOW_DEFAULT_NEW_TIMEOUT,
+    G_INET_FLOW_DEFAULT_OPEN_TIMEOUT,
 };
 
 #define LIFETIME_COUNT (sizeof(lifetime_values) / sizeof(lifetime_values[0]))
@@ -668,6 +669,7 @@ void g_inet_flow_update_udp(GInetFlow * flow, GInetFlow * packet)
 {
     if (packet->direction != flow->direction) {
         flow->state = FLOW_OPEN;
+        flow->lifetime = G_INET_FLOW_DEFAULT_OPEN_TIMEOUT;
     }
 }
 
@@ -753,8 +755,7 @@ GInetFlow *g_inet_flow_get_full(GInetFlowTable * table,
         if (update) {
             remove_flow_by_expiry(table, flow, flow->lifetime);
             g_inet_flow_update(flow, &packet);
-            insert_flow_by_expiry(table, flow, packet.lifetime);
-            flow->lifetime = packet.lifetime;
+            insert_flow_by_expiry(table, flow, flow->lifetime);
             flow->timestamp = timestamp ? : get_time_us();
             flow->packets++;
         }
@@ -775,7 +776,7 @@ GInetFlow *g_inet_flow_get_full(GInetFlowTable * table,
         table->misses++;
         flow->timestamp = timestamp ? : get_time_us();
         g_inet_flow_update(flow, &packet);
-        insert_flow_by_expiry(table, flow, packet.lifetime);
+        insert_flow_by_expiry(table, flow, flow->lifetime);
         flow->packets++;
     }
     return flow;
