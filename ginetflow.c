@@ -544,7 +544,9 @@ enum {
 
 static int find_expiry_index(GInetFlowTable * table, guint64 lifetime)
 {
-    for (int i = 0; i < LIFETIME_COUNT; i++) {
+    int i;
+
+    for (i = 0; i < LIFETIME_COUNT; i++) {
         if (lifetime == lifetime_values[i]) {
             return i;
         }
@@ -716,8 +718,9 @@ static void g_inet_flow_init(GInetFlow * flow)
 GInetFlow *g_inet_flow_expire(GInetFlowTable * table, guint64 ts)
 {
     GList *iter;
+    int i;
 
-    for (int i = 0; i < LIFETIME_COUNT; i++) {
+    for (i = 0; i < LIFETIME_COUNT; i++) {
         guint64 timeout = (lifetime_values[i] * 1000000);
         GList *first = g_list_first(table->list[i]);
         if (first) {
@@ -861,7 +864,9 @@ void g_inet_flow_table_max_set(GInetFlowTable * table, guint64 value)
 
 void g_inet_flow_foreach(GInetFlowTable * table, GIFFunc func, gpointer user_data)
 {
-    for (int i = 0; i < LIFETIME_COUNT; i++) {
+    int i;
+
+    for (i = 0; i < LIFETIME_COUNT; i++) {
         g_list_foreach(table->list[i], (GFunc) func, user_data);
     }
 }
