@@ -75,7 +75,7 @@ static void analyse_frame(GInetFlow * flow, const uint8_t * frame, uint32_t leng
 #endif
 
     if (!ndpi) {
-        ndpi = calloc(1, sizeof(ndpi_context));
+        ndpi = ndpi_calloc(1, sizeof(ndpi_context));
         ndpi->flow = ndpi_calloc(1, flow_size);
         ndpi->src = ndpi_calloc(1, id_size);
         ndpi->dst = ndpi_calloc(1, id_size);
@@ -200,12 +200,13 @@ static void clean_flow(GInetFlow * flow, gpointer data)
 #if defined(LIBNDPI_OLD_API) || defined(LIBNDPI_NEW_API)
     ndpi_context *ndpi = (ndpi_context *) g_object_get_data((GObject *) flow, "ndpi");
     if (ndpi) {
-        //ndpi_free_flow (ndpi->flow);
+        ndpi_free_flow (ndpi->flow);
         ndpi_free(ndpi->src);
         ndpi_free(ndpi->dst);
         free(ndpi);
     }
 #endif
+    g_object_unref(flow);
 }
 
 static GOptionEntry entries[] = {
