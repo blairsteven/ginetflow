@@ -171,14 +171,19 @@ static guint8 *build_hdr_sctp(guint8 * buffer, gboolean reverse)
     return p;
 }
 
-static guint8 *build_hdr_fragment(guint8 * buffer, guint16 next_ip_protocol)
+static guint8 *build_hdr_fragment(guint8 * buffer, guint16 next_ip_protocol,
+                                  gboolean more_frag_flag_set, guint16 offset, guint16 id)
 {
     guint8 *p = buffer;
     frag_hdr_t *fragment_hdr = (frag_hdr_t *) p;
     fragment_hdr->next_hdr = next_ip_protocol;
     fragment_hdr->res = 0x0;
-    fragment_hdr->fo_res_mflag = 0x0;
-    fragment_hdr->id = 0x01;
+    if (more_frag_flag_set) {
+        fragment_hdr->fo_res_mflag = GUINT16_TO_BE((offset << 3) + 1);
+    } else {
+        fragment_hdr->fo_res_mflag = GUINT16_TO_BE((offset << 3));
+    }
+    fragment_hdr->id = id;
     p += sizeof(frag_hdr_t);
     return p;
 }
@@ -231,7 +236,7 @@ static guint8 *build_hdr_ipv6_ext(guint8 * buffer,
         p = build_hdr_ipv6_part(p, next_ip_protocol);
         break;
     case IP_PROTOCOL_FRAGMENT:
-        p = build_hdr_fragment(p, next_ip_protocol);
+        p = build_hdr_fragment(p, next_ip_protocol, FALSE, 0x0, 0x0);
         break;
     case IP_PROTOCOL_AUTH:
         p = build_hdr_auth(p, next_ip_protocol);
@@ -371,6 +376,67 @@ static guint8 *build_hdr_ip(guint8 * buffer,
     }
 
     return p;
+}
+
+static guint8 *build_hdr_ipv4_fragment(guint8 * buffer, guint next_ip_protocol,
+                                       gboolean reverse, gboolean more_frag_flag_set,
+                                       guint16 offset, guint16 id)
+{
+    guint8 *p = buffer;
+    ip_hdr_t *ip = (ip_hdr_t *) p;
+    ip->ihl_version = 0x45;
+    ip->tos = 0x00;
+    ip->tot_len = 0x0000;
+    ip->id = id;
+    if (more_frag_flag_set) {
+        ip->frag_off = GUINT16_TO_BE(0x2000 + offset);
+    } else {
+        ip->frag_off = GUINT16_TO_BE(offset);
+    }
+
+    ip->ttl = 0xff;
+    ip->protocol = next_ip_protocol;
+    ip->check = 0x00;
+    if (reverse) {
+        ip->saddr = TEST_DADDR;
+        ip->daddr = TEST_SADDR;
+    } else {
+        ip->saddr = TEST_SADDR;
+        ip->daddr = TEST_DADDR;
+    }
+    p += sizeof(ip_hdr_t);
+    return p;
+}
+
+static guint8 *build_hdr_ipv6_fragment(guint8 * buffer, guint next_ip_protocol,
+                                       gboolean reverse, gboolean more_frag_flag_set,
+                                       guint16 offset, guint16 id)
+{
+    guint8 *p = build_hdr_ip(buffer, ETH_PROTOCOL_IPV6, IP_PROTOCOL_FRAGMENT, FALSE);
+    return build_hdr_fragment(p, next_ip_protocol, more_frag_flag_set, offset, id);
+}
+
+static guint8 *build_hdr_ip_fragment(guint8 * buffer,
+                                     guint16 eth_protocol, guint next_ip_protocol,
+                                     gboolean reverse, gboolean more_frag_flag_set,
+                                     guint16 offset, guint16 id)
+{
+    guint8 *p = buffer;
+
+    switch (eth_protocol) {
+    case ETH_PROTOCOL_IP:
+        p = build_hdr_ipv4_fragment(buffer, next_ip_protocol, reverse, more_frag_flag_set,
+                                    offset, id);
+        break;
+    case ETH_PROTOCOL_IPV6:
+        p = build_hdr_ipv6_fragment(buffer, next_ip_protocol, reverse, more_frag_flag_set,
+                                    offset, id);
+        break;
+    default:
+        return buffer;
+    }
+
+    return build_hdr_after_ip(p, next_ip_protocol, reverse);
 }
 
 static guint8 *build_pkt(guint8 * buffer,
@@ -1096,7 +1162,7 @@ void test_flow_expired_only_once()
     NP_ASSERT_NOT_NULL((table = g_inet_flow_table_new()));
     guint len = make_pkt(test_buffer, ETH_PROTOCOL_IP, IP_PROTOCOL_UDP);
     flow = g_inet_flow_get_full(table, test_buffer, len, 0, now, TRUE, TRUE);
-    while ((flow = g_inet_flow_expire(table, later))){
+    while ((flow = g_inet_flow_expire(table, later))) {
         g_object_unref(flow);
     }
     g_object_unref(table);
@@ -1547,4 +1613,85 @@ void test_flow_bad_ip_version()
     guint len = (guint) (p - test_buffer);
 
     NP_ASSERT_FALSE(flow_parse_ip(&test_flow, test_buffer, len, 0, NULL));
+}
+
+void test_flow_parse_ipv4_fragment()
+{
+    guint8 *p;
+    GInetFlow *flow1, *flow2, *flow3;
+    GInetFlowTable *table;
+
+    setup_test();
+    NP_ASSERT_NOT_NULL((table = g_inet_flow_table_new()));
+    NP_ASSERT(g_list_length(table->frag_info_list) == 0);
+
+    /* First IP fragment */
+    p = build_hdr_eth(test_buffer, ETH_PROTOCOL_IP);
+    p = build_hdr_ip_fragment(p, ETH_PROTOCOL_IP, IP_PROTOCOL_UDP, FALSE, TRUE, 0, 0xbeef);
+    guint8 len = (guint) (p - test_buffer);
+    NP_ASSERT_NOT_NULL((flow1 =
+                        g_inet_flow_get_full(table, test_buffer, len, 0, 0, TRUE, TRUE)));
+    NP_ASSERT(g_list_length(table->frag_info_list) == 1);
+
+    /* Second IP fragment */
+    p = build_hdr_eth(test_buffer, ETH_PROTOCOL_IP);
+    p = build_hdr_ip_fragment(p, ETH_PROTOCOL_IP, IP_PROTOCOL_UDP, FALSE, TRUE, 0xb9,
+                              0xbeef);
+    NP_ASSERT_NOT_NULL((flow2 =
+                        g_inet_flow_get_full(table, test_buffer, len, 0, 0, TRUE, TRUE)));
+    NP_ASSERT(flow1 == flow2);
+    NP_ASSERT(g_list_length(table->frag_info_list) == 1);
+
+    /* Last IP fragment */
+    p = build_hdr_eth(test_buffer, ETH_PROTOCOL_IP);
+    p = build_hdr_ip_fragment(p, ETH_PROTOCOL_IP, IP_PROTOCOL_UDP, FALSE, FALSE, 0xb9,
+                              0xbeef);
+    NP_ASSERT_NOT_NULL((flow3 =
+                        g_inet_flow_get_full(table, test_buffer, len, 0, 0, TRUE, TRUE)));
+    NP_ASSERT(flow1 == flow3);
+    NP_ASSERT(g_list_length(table->frag_info_list) == 0);
+
+    g_object_unref(flow1);
+    g_object_unref(table);
+}
+
+void test_flow_parse_ipv6_fragment()
+{
+    guint8 *p;
+    GInetFlow *flow1, *flow2, *flow3;
+    GInetFlowTable *table;
+
+    setup_test();
+    NP_ASSERT_NOT_NULL((table = g_inet_flow_table_new()));
+    NP_ASSERT(g_list_length(table->frag_info_list) == 0);
+
+    /* First IP fragment */
+    p = build_hdr_eth(test_buffer, ETH_PROTOCOL_IPV6);
+    p = build_hdr_ip_fragment(p, ETH_PROTOCOL_IPV6, IP_PROTOCOL_UDP, FALSE, TRUE, 0,
+                              0xbeef);
+    guint8 len = (guint) (p - test_buffer);
+    NP_ASSERT_NOT_NULL((flow1 =
+                        g_inet_flow_get_full(table, test_buffer, len, 0, 0, TRUE, TRUE)));
+    NP_ASSERT(g_list_length(table->frag_info_list) == 1);
+
+    /* Second IP fragment */
+    p = build_hdr_eth(test_buffer, ETH_PROTOCOL_IPV6);
+    p = build_hdr_ip_fragment(p, ETH_PROTOCOL_IPV6, IP_PROTOCOL_UDP, FALSE, TRUE, 0xb9,
+                              0xbeef);
+    NP_ASSERT_NOT_NULL((flow2 =
+                        g_inet_flow_get_full(table, test_buffer, len, 0, 0, TRUE, TRUE)));
+    NP_ASSERT(flow1 == flow2);
+    NP_ASSERT(g_list_length(table->frag_info_list) == 1);
+
+    /* Last IP fragment */
+    p = build_hdr_eth(test_buffer, ETH_PROTOCOL_IPV6);
+    p = build_hdr_ip_fragment(p, ETH_PROTOCOL_IPV6, IP_PROTOCOL_UDP, FALSE, FALSE, 0xb9,
+                              0xbeef);
+    NP_ASSERT_NOT_NULL((flow3 =
+                        g_inet_flow_get_full(table, test_buffer, len, 0, 0, TRUE, TRUE)));
+    NP_ASSERT(flow1 == flow3);
+    NP_ASSERT(g_list_length(table->frag_info_list) == 0);
+
+    g_object_unref(flow1);
+    g_object_unref(table);
 }
