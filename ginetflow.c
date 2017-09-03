@@ -371,12 +371,12 @@ static gboolean flow_parse_ipv4(GInetFlow * f, const guint8 * data, guint32 leng
 
         struct frag_info *found_flow = match->data;
         f->tuple.lower_port = found_flow->tuple.lower_port;
-        f->tuple.upper_port = found_flow->tuple.lower_port;
+        f->tuple.upper_port = found_flow->tuple.upper_port;
 
         /* If this is the last IP fragment (MF is unset), clean up */
         if ((GUINT16_FROM_BE(iph->frag_off) & 0x2000) == 0) {
             table->frag_info_list = g_list_remove(table->frag_info_list, found_flow);
-            free (found_flow);
+            free(found_flow);
         }
         return TRUE;
     }
@@ -496,12 +496,12 @@ static gboolean flow_parse_ipv6(GInetFlow * f, const guint8 * data, guint32 leng
 
             struct frag_info *found_flow = match->data;
             f->tuple.lower_port = found_flow->tuple.lower_port;
-            f->tuple.upper_port = found_flow->tuple.lower_port;
+            f->tuple.upper_port = found_flow->tuple.upper_port;
 
             /* If this is the last IP fragment (MF is unset), clean up the list */
             if ((GUINT16_FROM_BE(fragment_hdr->fo_res_mflag) & 0x1) == 0) {
                 table->frag_info_list = g_list_remove(table->frag_info_list, found_flow);
-                free (found_flow);
+                free(found_flow);
             }
             return TRUE;
         }
@@ -693,7 +693,7 @@ static void g_inet_flow_get_property(GObject * object, guint prop_id,
         {
             char str[INET6_ADDRSTRLEN];
             if (inet_ntop(flow->family, (guint8 *) flow->tuple.lower_ip,
-                    str, INET6_ADDRSTRLEN) != NULL) {
+                          str, INET6_ADDRSTRLEN) != NULL) {
                 g_value_set_string(value, str);
             }
             break;
@@ -702,7 +702,7 @@ static void g_inet_flow_get_property(GObject * object, guint prop_id,
         {
             char str[INET6_ADDRSTRLEN];
             if (inet_ntop(flow->family, (guint8 *) flow->tuple.upper_ip,
-                    str, INET6_ADDRSTRLEN) != NULL) {
+                          str, INET6_ADDRSTRLEN) != NULL) {
                 g_value_set_string(value, str);
             }
             break;
