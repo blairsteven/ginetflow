@@ -487,6 +487,22 @@ static guint make_pkt_vlan_Q_AD(guint8 * buffer, guint16 eth_protocol, guint ip_
     return (guint) (p - buffer);
 }
 
+static guint make_pkt_mpls(guint8 * buffer, guint32 label, guint16 eth_protocol,
+                           guint ip_protocol, int count)
+{
+    guint8 *p = build_hdr_eth(buffer, ETH_PROTOCOL_MPLS_UC);
+    while (count > 1) {
+        *((guint32 *) p) = g_htonl(((label << 20) | 0xFF));
+        p += sizeof(guint32);
+        count--;
+    };
+    *((guint32 *) p) = g_htonl(((label << 20) | 0x1FF));
+    p += sizeof(guint32);
+    p = build_hdr_ip(p, eth_protocol, ip_protocol, FALSE);
+    p = build_hdr_after_ip(p, ip_protocol, FALSE);
+    return (guint) (p - buffer);
+}
+
 static guint make_pkt_ipv6_ext(guint8 * buffer, guint16 next_ip_protocol, gboolean reverse)
 {
     guint8 *p = build_hdr_ip(buffer, ETH_PROTOCOL_IPV6, next_ip_protocol, FALSE);
@@ -616,6 +632,24 @@ void test_flow_parse_vlan()
     NP_ASSERT(flow_parse(&test_flow, test_buffer, len, 0, NULL));
 
     len = make_pkt_vlan_Q_AD(test_buffer, ETH_PROTOCOL_IPV6, IP_PROTOCOL_ICMPV6);
+    NP_ASSERT(flow_parse(&test_flow, test_buffer, len, 0, NULL));
+}
+
+void test_flow_parse_mpls()
+{
+    guint len;
+    setup_test();
+
+    len = make_pkt_mpls(test_buffer, 0x1, ETH_PROTOCOL_IP, IP_PROTOCOL_ICMP, 1);
+    NP_ASSERT(flow_parse(&test_flow, test_buffer, len, 0, NULL));
+
+    len = make_pkt_mpls(test_buffer, 0x2, ETH_PROTOCOL_IP, IP_PROTOCOL_ICMP, 2);
+    NP_ASSERT(flow_parse(&test_flow, test_buffer, len, 0, NULL));
+
+    len = make_pkt_mpls(test_buffer, 0x3, ETH_PROTOCOL_IPV6, IP_PROTOCOL_ICMPV6, 1);
+    NP_ASSERT(flow_parse(&test_flow, test_buffer, len, 0, NULL));
+
+    len = make_pkt_mpls(test_buffer, 0x4, ETH_PROTOCOL_IPV6, IP_PROTOCOL_ICMPV6, 2);
     NP_ASSERT(flow_parse(&test_flow, test_buffer, len, 0, NULL));
 }
 

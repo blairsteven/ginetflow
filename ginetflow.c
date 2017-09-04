@@ -103,6 +103,8 @@ G_DEFINE_TYPE(GInetFlowTable, g_inet_flow_table, G_TYPE_OBJECT);
 /* Packet */
 #define ETH_PROTOCOL_8021Q      0x8100
 #define ETH_PROTOCOL_8021AD     0x88A8
+#define ETH_PROTOCOL_MPLS_UC    0x8847
+#define ETH_PROTOCOL_MPLS_MC    0x8848
 #define ETH_PROTOCOL_IP         0x0800
 #define ETH_PROTOCOL_IPV6       0x86DD
 #define ETH_PROTOCOL_PPPOE_SESS 0x8864
@@ -571,6 +573,8 @@ static gboolean flow_parse(GInetFlow * f, const guint8 * data, guint32 length, g
     ethernet_hdr_t *e;
     vlan_hdr_t *v;
     pppoe_sess_hdr_t *pppoe;
+    guint32 label;
+    int labels = 0;
     guint16 type;
     int tags = 0;
 
@@ -601,6 +605,21 @@ static gboolean flow_parse(GInetFlow * f, const guint8 * data, guint32 length, g
         type = GUINT16_FROM_BE(v->protocol);
         data += sizeof(vlan_hdr_t);
         length -= sizeof(vlan_hdr_t);
+        goto try_again;
+    case ETH_PROTOCOL_MPLS_UC:
+    case ETH_PROTOCOL_MPLS_MC:
+        labels++;
+        if (labels > 3)
+            return FALSE;
+        if (length < sizeof(guint32))
+            return FALSE;
+        label = GUINT32_FROM_BE(*((guint32 *) data));
+        data += sizeof(guint32);
+        length -= sizeof(guint32);
+        if ((label & 0x100) != 0x100)
+            type = ETH_PROTOCOL_MPLS_UC;
+        else
+            type = ETH_PROTOCOL_IP;
         goto try_again;
     case ETH_PROTOCOL_IP:
     case ETH_PROTOCOL_IPV6:
