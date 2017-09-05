@@ -29,6 +29,10 @@
 //#define DEBUG(fmt, args...) {g_printf("%s: ",__func__);g_printf (fmt, ## args);}
 #define CHECK_BIT(__v,__p) ((__v) & (1<<(__p)))
 
+#define MAX_FRAG_DEPTH      128
+#define FRAG_EXPIRY_TIME    30
+#define TIMESTAMP_RESOLUTION_US    1000000
+
 struct tuple {
     guint16 protocol;
     guint16 lower_port;
@@ -55,22 +59,10 @@ struct _GInetFlow {
 };
 
 struct frag_info {
-    guint16 id;
+    guint32 id;
     struct tuple tuple;
+    guint64 timestamp;
 };
-
-static int find_flow_by_frag_info(gconstpointer a, gconstpointer b)
-{
-    const struct frag_info *entry = a;
-    struct frag_info *f = (struct frag_info *) b;
-
-    if (entry->id == f->id && entry->tuple.protocol == f->tuple.protocol &&
-        (memcmp(entry->tuple.lower_ip, f->tuple.lower_ip, 16) == 0) &&
-        (memcmp(entry->tuple.upper_ip, f->tuple.upper_ip, 16) == 0)) {
-        return 0;
-    }
-    return 1;
-}
 
 struct _GInetFlowClass {
     GObjectClass parent;
@@ -226,7 +218,7 @@ static inline guint64 get_time_us(void)
 {
     struct timeval tv;
     gettimeofday(&tv, NULL);
-    return (tv.tv_sec * (guint64) 1000000 + tv.tv_usec);
+    return (tv.tv_sec * (guint64) TIMESTAMP_RESOLUTION_US + tv.tv_usec);
 }
 
 static inline guint16 crc16(guint16 iv, guint64 p)
@@ -243,6 +235,60 @@ static inline guint16 crc16(guint16 iv, guint64 p)
         }
     }
     return iv;
+}
+
+static int find_flow_by_frag_info(gconstpointer a, gconstpointer b)
+{
+    const struct frag_info *entry = a;
+    struct frag_info *f = (struct frag_info *) b;
+
+    if (entry->id == f->id && entry->tuple.protocol == f->tuple.protocol &&
+        (memcmp(entry->tuple.lower_ip, f->tuple.lower_ip, 16) == 0) &&
+        (memcmp(entry->tuple.upper_ip, f->tuple.upper_ip, 16) == 0)) {
+        return 0;
+    }
+    return 1;
+}
+
+static gboolean frag_is_expired(struct frag_info *frag_info, guint64 timestamp)
+{
+    if (timestamp - frag_info->timestamp > FRAG_EXPIRY_TIME * TIMESTAMP_RESOLUTION_US)
+        return TRUE;
+    return FALSE;
+}
+
+static guint16 clear_expired_frag_info(GList * frag_info_list, guint64 timestamp)
+{
+    guint16 cleared = 0;
+    GList *l = frag_info_list;
+    while (l != NULL) {
+        GList *next = l->next;
+        if (frag_is_expired(l->data, timestamp)) {
+            struct frag_info *frag_info = (struct frag_info *) (l->data);
+            free(l->data);
+            frag_info_list = g_list_delete_link(frag_info_list, l);
+            cleared += 1;
+        }
+        l = next;
+    }
+    return cleared;
+}
+
+static gboolean store_frag_info(GInetFlowTable * table, GInetFlow * f, guint32 id)
+{
+    f->timestamp = f->timestamp ? : get_time_us();
+    if (g_list_length(table->frag_info_list) >= MAX_FRAG_DEPTH) {
+        if (clear_expired_frag_info(table->frag_info_list, f->timestamp) == 0) {
+            DEBUG("Fragment tracking limit reached\n");
+            return FALSE;
+        }
+    }
+    struct frag_info *entry = malloc(sizeof(struct frag_info));
+    entry->id = id;
+    memcpy(&(entry->tuple), &(f->tuple), sizeof(struct tuple));
+    entry->timestamp = f->timestamp;
+    table->frag_info_list = g_list_prepend(table->frag_info_list, entry);
+    return TRUE;
 }
 
 static guint32 get_hdr_len(guint8 hdr_ext_len)
@@ -402,10 +448,7 @@ static gboolean flow_parse_ipv4(GInetFlow * f, const guint8 * data, guint32 leng
     /* Store ID and tuple if the packet is a first IP fragment (MF set and frag_off is zero) */
     if (((GUINT16_FROM_BE(iph->frag_off) & 0x2000) != 0) &&
         ((GUINT16_FROM_BE(iph->frag_off) & 0x1FFF) == 0)) {
-        struct frag_info *entry = malloc(sizeof(struct frag_info));
-        entry->id = iph->id;
-        memcpy(&(entry->tuple), &(f->tuple), sizeof(struct tuple));
-        table->frag_info_list = g_list_prepend(table->frag_info_list, entry);
+        return store_frag_info(table, f, iph->id);
     }
 
     return TRUE;
@@ -531,10 +574,7 @@ static gboolean flow_parse_ipv6(GInetFlow * f, const guint8 * data, guint32 leng
     if (fragment_hdr &&
         ((GUINT16_FROM_BE(fragment_hdr->fo_res_mflag) & 0x1) != 0) &&
         ((GUINT16_FROM_BE(fragment_hdr->fo_res_mflag) & 0xFFF8) == 0)) {
-        struct frag_info *entry = malloc(sizeof(struct frag_info));
-        entry->id = fragment_hdr->id;
-        memcpy(&(entry->tuple), &(f->tuple), sizeof(struct tuple));
-        table->frag_info_list = g_list_prepend(table->frag_info_list, entry);
+        return store_frag_info(table, f, fragment_hdr->id);
     }
 
     return TRUE;
@@ -838,7 +878,7 @@ GInetFlow *g_inet_flow_expire(GInetFlowTable * table, guint64 ts)
     int i;
 
     for (i = 0; i < LIFETIME_COUNT; i++) {
-        guint64 timeout = (lifetime_values[i] * 1000000);
+        guint64 timeout = (lifetime_values[i] * TIMESTAMP_RESOLUTION_US);
         GList *first = g_list_first(table->list[i]);
         if (first) {
             GInetFlow *flow = (GInetFlow *) first->data;
@@ -860,7 +900,7 @@ GInetFlow *g_inet_flow_get_full(GInetFlowTable * table,
                                 guint16 hash, guint64 timestamp, gboolean update,
                                 gboolean l2)
 {
-    GInetFlow packet = { };
+    GInetFlow packet = {.timestamp = timestamp };
     GInetFlow *flow;
 
     if (l2) {
