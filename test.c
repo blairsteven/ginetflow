@@ -1729,3 +1729,50 @@ void test_flow_parse_ipv6_fragment()
     g_object_unref(flow1);
     g_object_unref(table);
 }
+
+void test_clear_expired_frag_info()
+{
+    guint8 *p;
+    GInetFlow *flow1, *flow2, *flow3;
+    GInetFlowTable *table;
+    guint64 now = get_time_us();
+
+    setup_test();
+    NP_ASSERT_NOT_NULL((table = g_inet_flow_table_new()));
+    NP_ASSERT(g_list_length(table->frag_info_list) == 0);
+
+    /* IP fragment 1 - expired */
+    p = build_hdr_eth(test_buffer, ETH_PROTOCOL_IP);
+    p = build_hdr_ip_fragment(p, ETH_PROTOCOL_IP, IP_PROTOCOL_UDP, FALSE, TRUE, 0, 0x1111);
+    guint8 len = (guint) (p - test_buffer);
+    NP_ASSERT_NOT_NULL((flow1 =
+                        g_inet_flow_get_full(table, test_buffer, len, 0, now - 50 * 1000000,
+                                             TRUE, TRUE)));
+    NP_ASSERT(g_list_length(table->frag_info_list) == 1);
+
+    /* IP fragment 2 - expired */
+    p = build_hdr_eth(test_buffer, ETH_PROTOCOL_IP);
+    p = build_hdr_ip_fragment(p, ETH_PROTOCOL_IP, IP_PROTOCOL_UDP, FALSE, TRUE, 0, 0x2222);
+    NP_ASSERT_NOT_NULL((flow2 =
+                        g_inet_flow_get_full(table, test_buffer, len, 0, now - 40 * 1000000,
+                                             TRUE, TRUE)));
+    NP_ASSERT(g_list_length(table->frag_info_list) == 2);
+
+    /* IP fragment 3 - not expired */
+    p = build_hdr_eth(test_buffer, ETH_PROTOCOL_IP);
+    p = build_hdr_ip_fragment(p, ETH_PROTOCOL_IP, IP_PROTOCOL_UDP, FALSE, TRUE, 0, 0x3333);
+    NP_ASSERT_NOT_NULL((flow3 =
+                        g_inet_flow_get_full(table, test_buffer, len, 0, now - 30 * 1000000,
+                                             TRUE, TRUE)));
+    NP_ASSERT(g_list_length(table->frag_info_list) == 3);
+
+    NP_ASSERT(clear_expired_frag_info(table->frag_info_list, now) == 2);
+    NP_ASSERT(g_list_length(table->frag_info_list) == 1);
+
+    struct frag_info *non_expired = (g_list_first(table->frag_info_list))->data;
+    NP_ASSERT(non_expired->id == 0x3333);
+
+    g_list_free_full(table->frag_info_list, free);
+    g_object_unref(flow1);
+    g_object_unref(table);
+}
