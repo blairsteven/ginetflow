@@ -81,7 +81,7 @@ static int lifetime_values[] = {
 struct _GInetFlowTable {
     GObject parent;
     GHashTable *table;
-    GList *list[LIFETIME_COUNT];
+    GQueue *expire_queue[LIFETIME_COUNT];
     GList *frag_info_list;
     guint64 hits;
     guint64 misses;
@@ -715,14 +715,14 @@ static void remove_flow_by_expiry(GInetFlowTable * table, GInetFlow * flow,
                                   guint64 lifetime)
 {
     int index = find_expiry_index(table, lifetime);
-    table->list[index] = g_list_remove_link(table->list[index], &flow->list);
+    g_queue_unlink(table->expire_queue[index], &flow->list);
 }
 
 static void insert_flow_by_expiry(GInetFlowTable * table, GInetFlow * flow,
                                   guint64 lifetime)
 {
     int index = find_expiry_index(table, lifetime);
-    table->list[index] = g_list_concat(&flow->list, table->list[index]);
+    g_queue_push_tail_link(table->expire_queue[index], &flow->list);
 }
 
 static void g_inet_flow_get_property(GObject * object, guint prop_id,
@@ -776,7 +776,7 @@ static void g_inet_flow_finalize(GObject * object)
 {
     GInetFlow *flow = G_INET_FLOW(object);
     int index = find_expiry_index(flow->table, flow->lifetime);
-    flow->table->list[index] = g_list_remove_link(flow->table->list[index], &flow->list);
+    g_queue_unlink(flow->table->expire_queue[index], &flow->list);
     g_hash_table_remove(flow->table->table, flow);
     G_OBJECT_CLASS(g_inet_flow_parent_class)->finalize(object);
 }
@@ -879,7 +879,7 @@ GInetFlow *g_inet_flow_expire(GInetFlowTable * table, guint64 ts)
 
     for (i = 0; i < LIFETIME_COUNT; i++) {
         guint64 timeout = (lifetime_values[i] * TIMESTAMP_RESOLUTION_US);
-        GList *first = g_list_first(table->list[i]);
+        GList *first = g_queue_peek_head_link(table->expire_queue[i]);
         if (first) {
             GInetFlow *flow = (GInetFlow *) first->data;
             if (flow->timestamp + timeout <= ts) {
@@ -947,8 +947,13 @@ GInetFlow *g_inet_flow_get_full(GInetFlowTable * table,
 
 static void g_inet_flow_table_finalize(GObject * object)
 {
+    int i;
+
     GInetFlowTable *table = G_INET_FLOW_TABLE(object);
     g_hash_table_destroy(table->table);
+    for (i = 0; i < LIFETIME_COUNT; i++) {
+        g_queue_free(table->expire_queue[i]);
+    }
     G_OBJECT_CLASS(g_inet_flow_table_parent_class)->finalize(object);
 }
 
@@ -1007,7 +1012,13 @@ static void g_inet_flow_table_class_init(GInetFlowTableClass * class)
 
 static void g_inet_flow_table_init(GInetFlowTable * table)
 {
+    int i;
+
     table->table = g_hash_table_new((GHashFunc) flow_hash, (GEqualFunc) flow_compare);
+
+    for (i = 0; i < LIFETIME_COUNT; i++) {
+        table->expire_queue[i] = g_queue_new();
+    }
 }
 
 GInetFlowTable *g_inet_flow_table_new(void)
@@ -1025,6 +1036,6 @@ void g_inet_flow_foreach(GInetFlowTable * table, GIFFunc func, gpointer user_dat
     int i;
 
     for (i = 0; i < LIFETIME_COUNT; i++) {
-        g_list_foreach(table->list[i], (GFunc) func, user_data);
+        g_queue_foreach(table->expire_queue[i], (GFunc) func, user_data);
     }
 }
