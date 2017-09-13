@@ -699,7 +699,7 @@ enum {
     FLOW_UIP,
 };
 
-static int find_expiry_index(GInetFlowTable * table, guint64 lifetime)
+static int find_expiry_index(guint64 lifetime)
 {
     int i;
 
@@ -714,14 +714,14 @@ static int find_expiry_index(GInetFlowTable * table, guint64 lifetime)
 static void remove_flow_by_expiry(GInetFlowTable * table, GInetFlow * flow,
                                   guint64 lifetime)
 {
-    int index = find_expiry_index(table, lifetime);
+    int index = find_expiry_index(lifetime);
     g_queue_unlink(table->expire_queue[index], &flow->list);
 }
 
 static void insert_flow_by_expiry(GInetFlowTable * table, GInetFlow * flow,
                                   guint64 lifetime)
 {
-    int index = find_expiry_index(table, lifetime);
+    int index = find_expiry_index(lifetime);
     g_queue_push_tail_link(table->expire_queue[index], &flow->list);
 }
 
@@ -775,7 +775,7 @@ static void g_inet_flow_get_property(GObject * object, guint prop_id,
 static void g_inet_flow_finalize(GObject * object)
 {
     GInetFlow *flow = G_INET_FLOW(object);
-    int index = find_expiry_index(flow->table, flow->lifetime);
+    int index = find_expiry_index(flow->lifetime);
     g_queue_unlink(flow->table->expire_queue[index], &flow->list);
     g_hash_table_remove(flow->table->table, flow);
     G_OBJECT_CLASS(g_inet_flow_parent_class)->finalize(object);
