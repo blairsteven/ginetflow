@@ -1776,3 +1776,35 @@ void test_clear_expired_frag_info()
     g_object_unref(flow1);
     g_object_unref(table);
 }
+
+void test_flow_expiry_queue()
+{
+    guint64 now = get_time_us();
+    guint64 later = (now * 10) + (G_INET_FLOW_DEFAULT_NEW_TIMEOUT * 1000000);
+    guint64 timeout = now + (G_INET_FLOW_DEFAULT_NEW_TIMEOUT * 1000000);
+
+    GInetFlowTable *table;
+    guint64 size;
+
+    setup_test();
+    NP_ASSERT_NOT_NULL((table = g_inet_flow_table_new()));
+
+    guint8 *p = build_pkt_tcp(test_buffer, ETH_PROTOCOL_IP, IP_PROTOCOL_TCP, FALSE,
+                              TEST_SPORT, TEST_DPORT, SYN);
+    guint len1 = (guint) (p - test_buffer);
+
+    GInetFlow *flow1 = g_inet_flow_get_full(table, test_buffer, len1, 0, now, TRUE, TRUE);
+    NP_ASSERT_NOT_NULL(flow1);
+
+    p = build_pkt_tcp(test_buffer, ETH_PROTOCOL_IP, IP_PROTOCOL_TCP, FALSE,
+                      0x1238, 0x5678, SYN);
+    guint len2 = (guint) (p - test_buffer);
+    GInetFlow *flow2 = g_inet_flow_get_full(table, test_buffer, len2, 0, later, TRUE, TRUE);
+
+    NP_ASSERT_NOT_NULL(g_inet_flow_expire(table, timeout));
+    g_object_unref(flow1);
+    g_object_get(table, "size", &size, NULL);
+    NP_ASSERT_EQUAL(size, 1);
+    g_object_unref(flow2);
+    g_object_unref(table);
+}
