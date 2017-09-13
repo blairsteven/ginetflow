@@ -47,7 +47,7 @@ GInetFlowTable *g_inet_flow_table_new(void);
 GInetFlow *g_inet_flow_get(GInetFlowTable * table, const guint8 * frame, guint length);
 GInetFlow *g_inet_flow_get_full(GInetFlowTable * table, const guint8 * frame,
                                 guint length, guint16 hash, guint64 timestamp,
-                                gboolean update, gboolean l2);
+                                gboolean update, gboolean l2, const uint8_t ** iphr);
 GInetFlow *g_inet_flow_expire(GInetFlowTable * table, guint64 ts);
 
 typedef void (*GIFFunc) (GInetFlow * flow, gpointer user_data);

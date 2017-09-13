@@ -61,12 +61,10 @@ static void ndpi_debug_function(u_int32_t protocol, void *module_struct,
     va_end(args);
 }
 
-static void analyse_frame(GInetFlow * flow, const uint8_t * frame, uint32_t length)
+static void analyse_frame(GInetFlow * flow, const uint8_t * iph, uint32_t length)
 {
     ndpi_context *ndpi;
     ndpi = (ndpi_context *) g_object_get_data((GObject *) flow, "ndpi");
-    const unsigned char *iph = frame + 14;      //TODO
-    const unsigned short ipsize = length - 14;
     const u_int64_t time = 0;
 #ifdef LIBNDPI_NEW_API
     ndpi_protocol protocol;
@@ -85,7 +83,7 @@ static void analyse_frame(GInetFlow * flow, const uint8_t * frame, uint32_t leng
     }
 
     protocol =
-        ndpi_detection_process_packet(module, ndpi->flow, iph, ipsize, time,
+        ndpi_detection_process_packet(module, ndpi->flow, iph, length, time,
                                       ndpi->src, ndpi->dst);
 #ifdef LIBNDPI_NEW_API
     ndpi->protocol = protocol.protocol;
@@ -107,7 +105,7 @@ static void analyse_frame(GInetFlow * flow, const uint8_t * frame, uint32_t leng
 
 typedef struct Job {
     GInetFlow *flow;
-    uint8_t *frame;
+    uint8_t *iph;
     uint32_t length;
 } Job;
 
@@ -117,23 +115,25 @@ static void worker_func(gpointer a, gpointer b)
     int id = GPOINTER_TO_INT(b);
 #if defined(LIBNDPI_OLD_API) || defined(LIBNDPI_NEW_API)
     if (dpi)
-        analyse_frame(job->flow, job->frame, job->length);
+        analyse_frame(job->flow, job->iph, job->length);
 #endif
     processed[id]++;
-    free(job->frame);
+    free(job->iph);
     free(job);
 }
 
 static void process_frame(const uint8_t * frame, uint32_t length)
 {
-    GInetFlow *flow = g_inet_flow_get_full(table, frame, length, 0, 0, TRUE, TRUE);
-    if (flow) {
+    const uint8_t *iph = NULL;
+    GInetFlow *flow = g_inet_flow_get_full(table, frame, length, 0, 0, TRUE, TRUE, &iph);
+    if (flow && iph) {
         guint hash = 0;
         Job *job = calloc(1, sizeof(Job));
         job->flow = flow;
-        job->frame = malloc(length);
-        memcpy(job->frame, frame, length);
-        job->length = length;
+        job->length = length - (iph - frame);
+        job->iph = malloc(job->length);
+        memcpy(job->iph, iph, job->length);
+
         g_object_get(flow, "hash", &hash, NULL);
         g_thread_pool_push(workers[hash % nworkers], (gpointer) job, NULL);
         frames++;
