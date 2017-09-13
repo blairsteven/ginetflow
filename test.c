@@ -338,6 +338,16 @@ static guint8 *build_hdr_icmp(guint8 * buffer, gboolean reverse)
     return p;
 }
 
+static guint8 *build_hdr_gre(guint8 * buffer, guint16 protocol, gboolean reverse)
+{
+    guint8 *p = buffer;
+    gre_hdr_t *gre = (gre_hdr_t *) p;
+    gre->flags_version = 0;
+    gre->protocol = GUINT16_TO_BE(protocol);
+    p += sizeof(gre_hdr_t);
+    return p;
+}
+
 static guint8 *build_hdr_after_ip(guint8 * buffer, guint ip_protocol, gboolean reverse)
 {
     guint8 *p = buffer;
@@ -515,6 +525,17 @@ static guint make_pkt_ipv6_ext(guint8 * buffer, guint16 next_ip_protocol, gboole
         }
         p = build_hdr_after_ip(p, IP_PROTOCOL_ICMPV6, FALSE);
     }
+    return (guint) (p - buffer);
+}
+
+static guint make_pkt_gre(guint8 * buffer, guint16 eth_protocol, guint16 gre_protocol,
+                          guint ip_protocol)
+{
+    guint8 *p = build_hdr_eth(buffer, eth_protocol);
+    p = build_hdr_ip(p, eth_protocol, IP_PROTOCOL_GRE, FALSE);
+    p = build_hdr_gre(p, gre_protocol, FALSE);
+    p = build_hdr_ip(p, eth_protocol, ip_protocol, FALSE);
+    p = build_hdr_after_ip(p, ip_protocol, FALSE);
     return (guint) (p - buffer);
 }
 
@@ -698,6 +719,31 @@ void test_flow_parse_ipv6_ext()
 
     len = make_pkt_ipv6_ext(test_buffer, IP_PROTOCOL_NO_NEXT_HDR, FALSE);
     NP_ASSERT(flow_parse_ipv6(&test_flow, test_buffer, len, NULL));
+}
+
+void test_flow_parse_gre()
+{
+    guint len;
+    setup_test();
+
+    len = make_pkt_gre(test_buffer, ETH_PROTOCOL_IP, ETH_PROTOCOL_IP, IP_PROTOCOL_ICMP);
+    NP_ASSERT(flow_parse(&test_flow, test_buffer, len, 0, NULL));
+    NP_ASSERT(test_flow.tuple.protocol == IP_PROTOCOL_ICMP);
+
+    len = make_pkt_gre(test_buffer, ETH_PROTOCOL_IP,
+                       ETH_PROTOCOL_PPPOE_SESS, IP_PROTOCOL_ICMP);
+    NP_ASSERT(flow_parse(&test_flow, test_buffer, len, 0, NULL));
+    NP_ASSERT(test_flow.tuple.protocol == IP_PROTOCOL_GRE);
+
+    len = make_pkt_gre(test_buffer, ETH_PROTOCOL_IPV6,
+                       ETH_PROTOCOL_IPV6, IP_PROTOCOL_ICMPV6);
+    NP_ASSERT(flow_parse(&test_flow, test_buffer, len, 0, NULL));
+    NP_ASSERT(test_flow.tuple.protocol == IP_PROTOCOL_ICMPV6);
+
+    len = make_pkt_gre(test_buffer, ETH_PROTOCOL_IPV6,
+                       ETH_PROTOCOL_PPPOE_SESS, IP_PROTOCOL_ICMPV6);
+    NP_ASSERT(flow_parse(&test_flow, test_buffer, len, 0, NULL));
+    NP_ASSERT(test_flow.tuple.protocol == IP_PROTOCOL_GRE);
 }
 
 void test_flow_parse_unsupported_eth_protocols()

@@ -120,6 +120,16 @@ typedef struct pppoe_sess_hdr {
     guint16 ppp_protocol_id;
 } __attribute__ ((packed)) pppoe_sess_hdr_t;
 
+#define GRE_HEADER_CSUM         0x8000
+#define GRE_HEADER_ROUTING      0x4000
+#define GRE_HEADER_KEY          0x2000
+#define GRE_HEADER_SEQ          0x1000
+
+typedef struct gre_hdr_t {
+    guint16 flags_version;
+    guint16 protocol;
+} __attribute__ ((packed)) gre_hdr_t;
+
 #define IP_PROTOCOL_HBH_OPT     0
 #define IP_PROTOCOL_ICMP        1
 #define IP_PROTOCOL_IPV4        4
@@ -128,6 +138,7 @@ typedef struct pppoe_sess_hdr {
 #define IP_PROTOCOL_IPV6        41
 #define IP_PROTOCOL_ROUTING     43
 #define IP_PROTOCOL_FRAGMENT    44
+#define IP_PROTOCOL_GRE         47
 #define IP_PROTOCOL_ESP         50
 #define IP_PROTOCOL_AUTH        51
 #define IP_PROTOCOL_ICMPV6      58
@@ -213,6 +224,11 @@ typedef struct ipv6_partial_ext_hdr_t {
     guint8 next_hdr;
     guint8 hdr_ext_len;
 } __attribute__ ((packed)) ipv6_partial_ext_hdr_t;
+
+static gboolean flow_parse_ipv4(GInetFlow * f, const guint8 * data, guint32 length,
+                                GInetFlowTable * table);
+static gboolean flow_parse_ipv6(GInetFlow * f, const guint8 * data, guint32 length,
+                                GInetFlowTable * table);
 
 static inline guint64 get_time_us(void)
 {
@@ -387,6 +403,40 @@ static gboolean flow_parse_sctp(GInetFlow * f, const guint8 * data, guint32 leng
     return TRUE;
 }
 
+static gboolean flow_parse_gre(GInetFlow * f, const guint8 * data, guint32 length,
+                               GInetFlowTable * table)
+{
+    gre_hdr_t *gre = (gre_hdr_t *) data;
+    if (length < sizeof(gre_hdr_t))
+        return FALSE;
+    int offset = sizeof(gre_hdr_t);
+    guint16 flags = GUINT16_FROM_BE(gre->flags_version);
+    guint16 proto = GUINT16_FROM_BE(gre->protocol);
+
+    if (flags & (GRE_HEADER_CSUM | GRE_HEADER_ROUTING))
+        offset += 4;
+    if (flags & GRE_HEADER_KEY)
+        offset += 4;
+    if (flags & GRE_HEADER_SEQ)
+        offset += 4;
+    if (length < offset)
+        return FALSE;
+
+    switch (proto) {
+    case ETH_PROTOCOL_IP:
+        if (!flow_parse_ipv4(f, data + offset, length - offset, table))
+            return FALSE;
+        break;
+    case ETH_PROTOCOL_IPV6:
+        if (!flow_parse_ipv6(f, data + offset, length - offset, table))
+            return FALSE;
+        break;
+    default:
+        return FALSE;
+    }
+    return TRUE;
+}
+
 static gboolean flow_parse_ipv4(GInetFlow * f, const guint8 * data, guint32 length,
                                 GInetFlowTable * table)
 {
@@ -437,6 +487,9 @@ static gboolean flow_parse_ipv4(GInetFlow * f, const guint8 * data, guint32 leng
     case IP_PROTOCOL_UDP:
         if (!flow_parse_udp(f, data + sizeof(ip_hdr_t), length - sizeof(ip_hdr_t)))
             return FALSE;
+        break;
+    case IP_PROTOCOL_GRE:
+        flow_parse_gre(f, data + sizeof(ip_hdr_t), length - sizeof(ip_hdr_t), table);
         break;
     case IP_PROTOCOL_ICMP:
     default:
@@ -502,6 +555,9 @@ static gboolean flow_parse_ipv6(GInetFlow * f, const guint8 * data, guint32 leng
         if (!flow_parse_ipv6(f, data, length, table)) {
             return FALSE;
         }
+        break;
+    case IP_PROTOCOL_GRE:
+        flow_parse_gre(f, data, length, table);
         break;
     case IP_PROTOCOL_HBH_OPT:
     case IP_PROTOCOL_DEST_OPT:
