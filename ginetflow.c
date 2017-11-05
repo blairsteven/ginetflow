@@ -54,6 +54,8 @@ struct _GInetFlow {
     guint16 hash;
     guint16 flags;
     guint8 direction;
+    guint16 server_port;
+    guint32 server_ip[4];
     struct tuple tuple;
     gpointer context;
 };
@@ -500,6 +502,15 @@ static gboolean flow_parse_ipv4(GInetFlow * f, const guint8 * data, guint32 leng
         break;
     }
 
+    if (f->direction) {
+        f->server_ip[0] = iph->daddr;
+        f->server_port = f->tuple.lower_port;
+    }
+    else {
+        f->server_ip[0] = iph->saddr;
+        f->server_port = f->tuple.lower_port;
+    }
+
     /* Store ID and tuple if the packet is a first IP fragment (MF set and frag_off is zero) */
     if (((GUINT16_FROM_BE(iph->frag_off) & 0x2000) != 0) &&
         ((GUINT16_FROM_BE(iph->frag_off) & 0x1FFF) == 0)) {
@@ -521,7 +532,7 @@ static gboolean flow_parse_ipv6(GInetFlow * f, const guint8 * data, guint32 leng
         return FALSE;
     if (iphr)
         *iphr = data;
-    if (memcmp(iph->saddr, iph->daddr, 16) < 0) {
+    if (memcmp(iph->saddr, iph->daddr, 16) > 0) {
         memcpy(f->tuple.lower_ip, iph->saddr, 16);
         memcpy(f->tuple.upper_ip, iph->daddr, 16);
     } else {
@@ -628,6 +639,15 @@ static gboolean flow_parse_ipv6(GInetFlow * f, const guint8 * data, guint32 leng
         f->tuple.lower_port = 0;
         f->tuple.upper_port = 0;
         break;
+    }
+
+    if (f->direction) {
+        memcpy (f->server_ip, iph->saddr, sizeof(f->server_ip));
+        f->server_port = f->tuple.lower_port;
+    }
+    else {
+        memcpy (f->server_ip, iph->daddr, sizeof(f->server_ip));
+        f->server_port = f->tuple.lower_port;
     }
 
     /* Store ID and tuple if the packet is a first IP fragment (MF set and frag_off is zero) */
@@ -755,8 +775,10 @@ enum {
     FLOW_PROTOCOL,
     FLOW_LPORT,
     FLOW_UPORT,
+    FLOW_SERVER_PORT,
     FLOW_LIP,
     FLOW_UIP,
+    FLOW_SERVER_IP,
 };
 
 static int find_expiry_index(guint64 lifetime)
@@ -808,6 +830,9 @@ static void g_inet_flow_get_property(GObject * object, guint prop_id,
     case FLOW_UPORT:
         g_value_set_uint(value, flow->tuple.upper_port);
         break;
+    case FLOW_SERVER_PORT:
+        g_value_set_uint(value, flow->server_port);
+        break;
     case FLOW_LIP:
         {
             char str[INET6_ADDRSTRLEN];
@@ -821,6 +846,15 @@ static void g_inet_flow_get_property(GObject * object, guint prop_id,
         {
             char str[INET6_ADDRSTRLEN];
             if (inet_ntop(flow->family, (guint8 *) flow->tuple.upper_ip,
+                          str, INET6_ADDRSTRLEN) != NULL) {
+                g_value_set_string(value, str);
+            }
+            break;
+        }
+    case FLOW_SERVER_IP:
+        {
+            char str[INET6_ADDRSTRLEN];
+            if (inet_ntop(flow->family, (guint8 *) flow->server_ip,
                           str, INET6_ADDRSTRLEN) != NULL) {
                 g_value_set_string(value, str);
             }
@@ -871,6 +905,10 @@ static void g_inet_flow_class_init(GInetFlowClass * class)
                                     g_param_spec_uint("uport", "UPort",
                                                       "Upper L4 port (larger value)",
                                                       0, G_MAXUINT16, 0, G_PARAM_READABLE));
+    g_object_class_install_property(object_class, FLOW_SERVER_PORT,
+                                    g_param_spec_uint("serverport", "ServerPort",
+                                                      "Server port (lower port)",
+                                                      0, G_MAXUINT16, 0, G_PARAM_READABLE));
     g_object_class_install_property(object_class, FLOW_LIP,
                                     g_param_spec_string("lip", "LIP",
                                                         "Lower IP address (smaller value)",
@@ -878,6 +916,10 @@ static void g_inet_flow_class_init(GInetFlowClass * class)
     g_object_class_install_property(object_class, FLOW_UIP,
                                     g_param_spec_string("uip", "UIP",
                                                         "Upper IP address (larger value)",
+                                                        NULL, G_PARAM_READABLE));
+    g_object_class_install_property(object_class, FLOW_SERVER_IP,
+                                    g_param_spec_string("serverip", "ServerIP",
+                                                        "Server IP address (device with lower port)",
                                                         NULL, G_PARAM_READABLE));
     object_class->finalize = g_inet_flow_finalize;
 }
@@ -995,6 +1037,8 @@ GInetFlow *g_inet_flow_get_full(GInetFlowTable * table,
         flow->direction = packet.direction;
         flow->hash = packet.hash;
         flow->tuple = packet.tuple;
+        flow->server_port = packet.server_port;
+        memcpy (flow->server_ip, packet.server_ip, sizeof(packet.server_ip));
         g_hash_table_replace(table->table, (gpointer) flow, (gpointer) flow);
         table->misses++;
         flow->timestamp = timestamp ? : get_time_us();
