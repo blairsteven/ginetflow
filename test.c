@@ -1023,8 +1023,10 @@ void test_flow_properties()
     guint protocol;
     guint lport;
     guint uport;
+    guint server_port;
     gchar *lip;
     gchar *uip;
+    gchar *sip;
     gchar *saddr_c = NULL;
     gchar *daddr_c = NULL;
 
@@ -1050,21 +1052,219 @@ void test_flow_properties()
     NP_ASSERT(hash);
     NP_ASSERT_EQUAL(protocol, IP_PROTOCOL_TCP);
 
-    g_object_get(flow, "lport", &lport, "uport", &uport, NULL);
+    g_object_get(flow, "lport", &lport, "uport", &uport, "serverport", &server_port, NULL);
     NP_ASSERT_EQUAL(lport, TEST_SPORT);
+    NP_ASSERT_EQUAL(server_port, TEST_SPORT);
     NP_ASSERT_EQUAL(uport, TEST_DPORT);
 
-    g_object_get(flow, "lip", &lip, "uip", &uip, NULL);
+    g_object_get(flow, "lip", &lip, "uip", &uip, "serverip", &sip, NULL);
     NP_ASSERT_NOT_NULL(lip);
     NP_ASSERT_NOT_NULL(uip);
+    NP_ASSERT_NOT_NULL(sip);
     saddr_c = num_to_string(saddr, G_SOCKET_FAMILY_IPV4);
     daddr_c = num_to_string(daddr, G_SOCKET_FAMILY_IPV4);
     NP_ASSERT_STR_EQUAL(saddr_c, lip);
+    NP_ASSERT_STR_EQUAL(saddr_c, sip);
     NP_ASSERT_STR_EQUAL(daddr_c, uip);
 
     g_free(saddr_c);
     g_free(daddr_c);
     g_free(lip);
+    g_free(sip);
+    g_free(uip);
+    g_object_unref(flow);
+    g_object_unref(table);
+}
+
+void test_flow_properties_reversed()
+{
+    /* Original values converted to network byte order */
+    guint8 saddr[] = { 0x21, 0x43, 0x65, 0x87 };
+    guint8 daddr[] = { 0x78, 0x56, 0x34, 0x12 };
+
+    GInetFlowTable *table;
+    GInetFlow *flow;
+    guint state = FLOW_CLOSED;
+    guint64 packets;
+    guint hash;
+    guint protocol;
+    guint lport;
+    guint uport;
+    guint server_port;
+    gchar *lip;
+    gchar *uip;
+    gchar *sip;
+    gchar *saddr_c = NULL;
+    gchar *daddr_c = NULL;
+
+
+    setup_test();
+
+    NP_ASSERT_NOT_NULL((table = g_inet_flow_table_new()));
+    guint len = make_pkt_reverse(test_buffer, ETH_PROTOCOL_IP, IP_PROTOCOL_TCP);
+    NP_ASSERT_NOT_NULL((flow =
+                        g_inet_flow_get_full(table, test_buffer, len, 0, 0, TRUE, TRUE,
+                                             NULL)));
+    g_object_get(flow, "state", &state, NULL);
+    NP_ASSERT_EQUAL(state, FLOW_NEW);
+
+    /* Update flow */
+    len = make_pkt_reverse(test_buffer, ETH_PROTOCOL_IP, IP_PROTOCOL_TCP);
+    NP_ASSERT_NOT_NULL((flow =
+                        g_inet_flow_get_full(table, test_buffer, len, 0, 0, TRUE, TRUE,
+                                             NULL)));
+
+    g_object_get(flow, "packets", &packets, "hash", &hash, "protocol", &protocol, NULL);
+    NP_ASSERT_EQUAL(packets, 2);
+    NP_ASSERT(hash);
+    NP_ASSERT_EQUAL(protocol, IP_PROTOCOL_TCP);
+
+    g_object_get(flow, "lport", &lport, "uport", &uport, "serverport", &server_port, NULL);
+    NP_ASSERT_EQUAL(lport, TEST_SPORT);
+    NP_ASSERT_EQUAL(server_port, TEST_SPORT);
+    NP_ASSERT_EQUAL(uport, TEST_DPORT);
+
+    g_object_get(flow, "lip", &lip, "uip", &uip, "serverip", &sip, NULL);
+    NP_ASSERT_NOT_NULL(lip);
+    NP_ASSERT_NOT_NULL(uip);
+    NP_ASSERT_NOT_NULL(sip);
+    saddr_c = num_to_string(saddr, G_SOCKET_FAMILY_IPV4);
+    daddr_c = num_to_string(daddr, G_SOCKET_FAMILY_IPV4);
+    NP_ASSERT_STR_EQUAL(saddr_c, lip);
+    NP_ASSERT_STR_EQUAL(saddr_c, sip);
+    NP_ASSERT_STR_EQUAL(daddr_c, uip);
+
+    g_free(saddr_c);
+    g_free(daddr_c);
+    g_free(lip);
+    g_free(sip);
+    g_free(uip);
+    g_object_unref(flow);
+    g_object_unref(table);
+}
+
+void test_flow_properties_ipv6()
+{
+    GInetFlowTable *table;
+    GInetFlow *flow;
+    guint state = FLOW_CLOSED;
+    guint64 packets;
+    guint hash;
+    guint protocol;
+    guint lport;
+    guint uport;
+    guint server_port;
+    gchar *lip;
+    gchar *uip;
+    gchar *sip;
+    gchar *saddr_c = NULL;
+    gchar *daddr_c = NULL;
+
+
+    setup_test();
+
+    NP_ASSERT_NOT_NULL((table = g_inet_flow_table_new()));
+    guint len = make_pkt(test_buffer, ETH_PROTOCOL_IPV6, IP_PROTOCOL_TCP);
+    NP_ASSERT_NOT_NULL((flow =
+                        g_inet_flow_get_full(table, test_buffer, len, 0, 0, TRUE, TRUE,
+                                             NULL)));
+    g_object_get(flow, "state", &state, NULL);
+    NP_ASSERT_EQUAL(state, FLOW_NEW);
+
+    /* Update flow */
+    len = make_pkt(test_buffer, ETH_PROTOCOL_IPV6, IP_PROTOCOL_TCP);
+    NP_ASSERT_NOT_NULL((flow =
+                        g_inet_flow_get_full(table, test_buffer, len, 0, 0, TRUE, TRUE,
+                                             NULL)));
+
+    g_object_get(flow, "packets", &packets, "hash", &hash, "protocol", &protocol, NULL);
+    NP_ASSERT_EQUAL(packets, 2);
+    NP_ASSERT(hash);
+    NP_ASSERT_EQUAL(protocol, IP_PROTOCOL_TCP);
+
+    g_object_get(flow, "lport", &lport, "uport", &uport, "serverport", &server_port, NULL);
+    NP_ASSERT_EQUAL(lport, TEST_SPORT);
+    NP_ASSERT_EQUAL(server_port, TEST_SPORT);
+    NP_ASSERT_EQUAL(uport, TEST_DPORT);
+
+    g_object_get(flow, "lip", &lip, "uip", &uip, "serverip", &sip, NULL);
+    NP_ASSERT_NOT_NULL(lip);
+    NP_ASSERT_NOT_NULL(uip);
+    NP_ASSERT_NOT_NULL(sip);
+    saddr_c = num_to_string(test_ip6src, G_SOCKET_FAMILY_IPV6);
+    daddr_c = num_to_string(test_ip6dst, G_SOCKET_FAMILY_IPV6);
+    NP_ASSERT_STR_EQUAL(saddr_c, lip);
+    NP_ASSERT_STR_EQUAL(daddr_c, uip);
+    NP_ASSERT_STR_EQUAL(saddr_c, sip);
+
+    g_free(saddr_c);
+    g_free(daddr_c);
+    g_free(lip);
+    g_free(sip);
+    g_free(uip);
+    g_object_unref(flow);
+    g_object_unref(table);
+}
+
+
+void test_flow_properties_ipv6_reversed()
+{
+    GInetFlowTable *table;
+    GInetFlow *flow;
+    guint state = FLOW_CLOSED;
+    guint64 packets;
+    guint hash;
+    guint protocol;
+    guint lport;
+    guint uport;
+    guint server_port;
+    gchar *lip;
+    gchar *uip;
+    gchar *sip;
+    gchar *saddr_c = NULL;
+    gchar *daddr_c = NULL;
+
+
+    setup_test();
+
+    NP_ASSERT_NOT_NULL((table = g_inet_flow_table_new()));
+    guint len = make_pkt_reverse(test_buffer, ETH_PROTOCOL_IPV6, IP_PROTOCOL_TCP);
+    NP_ASSERT_NOT_NULL((flow =
+                        g_inet_flow_get_full(table, test_buffer, len, 0, 0, TRUE, TRUE,
+                                             NULL)));
+    g_object_get(flow, "state", &state, NULL);
+    NP_ASSERT_EQUAL(state, FLOW_NEW);
+
+    /* Update flow */
+    len = make_pkt_reverse(test_buffer, ETH_PROTOCOL_IPV6, IP_PROTOCOL_TCP);
+    NP_ASSERT_NOT_NULL((flow =
+                        g_inet_flow_get_full(table, test_buffer, len, 0, 0, TRUE, TRUE,
+                                             NULL)));
+
+    g_object_get(flow, "packets", &packets, "hash", &hash, "protocol", &protocol, NULL);
+    NP_ASSERT_EQUAL(packets, 2);
+    NP_ASSERT(hash);
+    NP_ASSERT_EQUAL(protocol, IP_PROTOCOL_TCP);
+
+    g_object_get(flow, "lport", &lport, "uport", &uport, "serverport", &server_port, NULL);
+    NP_ASSERT_EQUAL(lport, TEST_SPORT);
+    NP_ASSERT_EQUAL(server_port, TEST_SPORT);
+    NP_ASSERT_EQUAL(uport, TEST_DPORT);
+
+    g_object_get(flow, "lip", &lip, "uip", &uip, "serverip", &sip, NULL);
+    NP_ASSERT_NOT_NULL(lip);
+    NP_ASSERT_NOT_NULL(uip);
+    NP_ASSERT_NOT_NULL(sip);
+    saddr_c = num_to_string(test_ip6src, G_SOCKET_FAMILY_IPV6);
+    daddr_c = num_to_string(test_ip6dst, G_SOCKET_FAMILY_IPV6);
+    NP_ASSERT_STR_EQUAL(saddr_c, lip);
+    NP_ASSERT_STR_EQUAL(daddr_c, uip);
+    NP_ASSERT_STR_EQUAL(saddr_c, sip);
+
+    g_free(saddr_c);
+    g_free(daddr_c);
+    g_free(lip);
+    g_free(sip);
     g_free(uip);
     g_object_unref(flow);
     g_object_unref(table);
@@ -1114,7 +1314,6 @@ void flow_print_protocol(GInetFlow * flow)
     g_object_get(flow, "protocol", &protocol, "lip", &lip, NULL);
     NP_ASSERT((protocol == IP_PROTOCOL_TCP) || (protocol == IP_PROTOCOL_UDP));
     NP_ASSERT_NOT_NULL(lip);
-    g_printf("protocol: %u; lip: %s\n", protocol, lip);
 
     g_free(lip);
 }
