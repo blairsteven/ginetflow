@@ -503,11 +503,11 @@ static gboolean flow_parse_ipv4(GInetFlow * f, const guint8 * data, guint32 leng
     }
 
     if (f->direction) {
-        f->server_ip[0] = iph->daddr;
+        f->server_ip[0] = iph->saddr;
         f->server_port = f->tuple.lower_port;
     }
     else {
-        f->server_ip[0] = iph->saddr;
+        f->server_ip[0] = iph->daddr;
         f->server_port = f->tuple.lower_port;
     }
 

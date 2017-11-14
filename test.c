@@ -102,11 +102,11 @@ static guint8 *build_hdr_bad_ipv4(guint8 * buffer, guint next_ip_protocol, gbool
     ip->protocol = next_ip_protocol;
     ip->check = 0x00;
     if (reverse) {
-        ip->saddr = TEST_DADDR;
-        ip->daddr = TEST_SADDR;
+        ip->saddr = htonl(TEST_DADDR);
+        ip->daddr = htonl(TEST_SADDR);
     } else {
-        ip->saddr = TEST_SADDR;
-        ip->daddr = TEST_DADDR;
+        ip->saddr = htonl(TEST_SADDR);
+        ip->daddr = htonl(TEST_DADDR);
     }
     p += sizeof(ip_hdr_t);
     return p;
@@ -125,11 +125,11 @@ static guint8 *build_hdr_ipv4(guint8 * buffer, guint next_ip_protocol, gboolean 
     ip->protocol = next_ip_protocol;
     ip->check = 0x00;
     if (reverse) {
-        ip->saddr = TEST_DADDR;
-        ip->daddr = TEST_SADDR;
+        ip->saddr = htonl(TEST_DADDR);
+        ip->daddr = htonl(TEST_SADDR);
     } else {
-        ip->saddr = TEST_SADDR;
-        ip->daddr = TEST_DADDR;
+        ip->saddr = htonl(TEST_SADDR);
+        ip->daddr = htonl(TEST_DADDR);
     }
     p += sizeof(ip_hdr_t);
     return p;
@@ -277,11 +277,11 @@ static guint8 *build_hdr_tcp(guint8 * buffer, gboolean reverse)
     guint8 *p = buffer;
     tcp_hdr_t *tcp = (tcp_hdr_t *) p;
     if (reverse) {
-        tcp->source = TEST_DPORT;
-        tcp->destination = TEST_SPORT;
+        tcp->source = htons(TEST_DPORT);
+        tcp->destination = htons(TEST_SPORT);
     } else {
-        tcp->source = TEST_SPORT;
-        tcp->destination = TEST_DPORT;
+        tcp->source = htons(TEST_SPORT);
+        tcp->destination = htons(TEST_DPORT);
     }
     tcp->seq = 0;
     tcp->ack = 0;
@@ -315,11 +315,11 @@ static guint8 *build_hdr_udp(guint8 * buffer, gboolean reverse)
     guint8 *p = buffer;
     udp_hdr_t *udp = (udp_hdr_t *) p;
     if (reverse) {
-        udp->source = TEST_DPORT;
-        udp->destination = TEST_SPORT;
+        udp->source = htons(TEST_DPORT);
+        udp->destination = htons(TEST_SPORT);
     } else {
-        udp->source = TEST_SPORT;
-        udp->destination = TEST_DPORT;
+        udp->source = htons(TEST_SPORT);
+        udp->destination = htons(TEST_DPORT);
     }
     udp->length = 0x0020;
     udp->check = 0x0000;
@@ -1012,8 +1012,8 @@ gchar *num_to_string(guint8 * number, GSocketFamily family)
 void test_flow_properties()
 {
     /* Original values converted to network byte order */
-    guint8 saddr[] = { 0x21, 0x43, 0x65, 0x87 };
-    guint8 daddr[] = { 0x78, 0x56, 0x34, 0x12 };
+    guint saddr = htonl(TEST_SADDR);
+    guint daddr = htonl(TEST_DADDR);
 
     GInetFlowTable *table;
     GInetFlow *flow;
@@ -1061,8 +1061,8 @@ void test_flow_properties()
     NP_ASSERT_NOT_NULL(lip);
     NP_ASSERT_NOT_NULL(uip);
     NP_ASSERT_NOT_NULL(sip);
-    saddr_c = num_to_string(saddr, G_SOCKET_FAMILY_IPV4);
-    daddr_c = num_to_string(daddr, G_SOCKET_FAMILY_IPV4);
+    saddr_c = num_to_string((gchar*)&saddr, G_SOCKET_FAMILY_IPV4);
+    daddr_c = num_to_string((gchar*)&daddr, G_SOCKET_FAMILY_IPV4);
     NP_ASSERT_STR_EQUAL(saddr_c, lip);
     NP_ASSERT_STR_EQUAL(saddr_c, sip);
     NP_ASSERT_STR_EQUAL(daddr_c, uip);
@@ -1078,9 +1078,9 @@ void test_flow_properties()
 
 void test_flow_properties_reversed()
 {
-    /* Original values converted to network byte order */
-    guint8 saddr[] = { 0x21, 0x43, 0x65, 0x87 };
-    guint8 daddr[] = { 0x78, 0x56, 0x34, 0x12 };
+    /* Addresses in network order */
+    guint saddr = htonl(TEST_SADDR);
+    guint daddr = htonl(TEST_DADDR);
 
     GInetFlowTable *table;
     GInetFlow *flow;
@@ -1128,8 +1128,8 @@ void test_flow_properties_reversed()
     NP_ASSERT_NOT_NULL(lip);
     NP_ASSERT_NOT_NULL(uip);
     NP_ASSERT_NOT_NULL(sip);
-    saddr_c = num_to_string(saddr, G_SOCKET_FAMILY_IPV4);
-    daddr_c = num_to_string(daddr, G_SOCKET_FAMILY_IPV4);
+    saddr_c = num_to_string((gchar*)&saddr, G_SOCKET_FAMILY_IPV4);
+    daddr_c = num_to_string((gchar*)&daddr, G_SOCKET_FAMILY_IPV4);
     NP_ASSERT_STR_EQUAL(saddr_c, lip);
     NP_ASSERT_STR_EQUAL(saddr_c, sip);
     NP_ASSERT_STR_EQUAL(daddr_c, uip);
