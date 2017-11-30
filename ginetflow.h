@@ -19,6 +19,7 @@
 #define __G_INET_FLOW_H__
 
 #include <glib-object.h>
+#include "ginettuple.h"
 
 G_BEGIN_DECLS
 #define G_INET_TYPE_FLOW            (g_inet_flow_get_type ())
@@ -49,6 +50,8 @@ GInetFlow *g_inet_flow_get_full(GInetFlowTable * table, const guint8 * frame,
                                 guint length, guint16 hash, guint64 timestamp,
                                 gboolean update, gboolean l2, const uint8_t ** iphr);
 GInetFlow *g_inet_flow_expire(GInetFlowTable * table, guint64 ts);
+
+GInetTuple *g_inet_flow_parse(const guint8 * frame, guint length);
 
 typedef void (*GIFFunc) (GInetFlow * flow, gpointer user_data);
 void g_inet_flow_foreach(GInetFlowTable * table, GIFFunc func, gpointer user_data);

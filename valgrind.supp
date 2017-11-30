@@ -1,7 +1,13 @@
 # 
 # Suppress false-positive leaks in libgobject
 #
-
+{
+   ignore_libgobject_class_ref
+   Memcheck:Leak
+   ...
+   obj:*/*libgobject*.so*
+   fun:g_type_class_ref
+}
 {
    ignore_libgobject_g_type_reg_fundamental
    Memcheck:Leak

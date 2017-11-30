@@ -41,11 +41,11 @@ endif
 endif
 endif
 
-LIBRARY = libginetflow.so
+LIBRARY = libginetflow.so libginettuple.so
 
 all: $(LIBRARY)
 
-$(LIBRARY): ginetflow.o
+lib%.so: %.o
 	@echo "Building "$@""
 	$(Q)$(CC) -shared $(LDFLAGS) $(EXTRA_LDFLAGS) -o $@ $^
 
@@ -61,7 +61,7 @@ test: test.c
 	@echo "Building $@"
 	$(Q)mkdir -p gcov
 	$(Q)$(CC) -g -fprofile-arcs -fprofile-dir=gcov -ftest-coverage $(NOVAPROVA_CFLAGS) -o $@ $< $(NOVAPROVA_LIBS)
-	$(Q)G_SLICE=always-malloc VALGRIND_OPTS=--suppressions=valgrind.supp ./test $(TESTSPEC) 2>&1 | $(FORMAT_RESULTS)
+	$(Q)G_SLICE=always-malloc VALGRIND_OPTS=--suppressions=valgrind.supp LD_LIBRARY_PATH=. ./test $(TESTSPEC) 2>&1 | $(FORMAT_RESULTS)
 	$(Q)mv *.gcno gcov/
 	$(Q)lcov -q --capture --directory . --output-file gcov/coverage.info
 	$(Q)genhtml -q gcov/coverage.info --output-directory gcov
