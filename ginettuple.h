@@ -30,6 +30,7 @@ typedef struct _GInetTuple GInetTuple;
 typedef struct _GInetTupleClass GInetTupleClass;
 #define G_INET_TUPLE(o)        (G_TYPE_CHECK_INSTANCE_CAST ((o), G_INET_TUPLE_TYPE, GInetTuple))
 
+GInetTuple *g_inet_tuple_new_from_bytes(guint8 *frame, int len);
 GInetAddress *g_inet_tuple_get_src (GInetTuple *tuple);
 /* g_inet_tuple_set_src_address owns src after this call */
 void g_inet_tuple_set_src_address (GInetTuple *tuple, GInetAddress *src);
