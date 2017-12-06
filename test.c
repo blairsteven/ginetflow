@@ -570,7 +570,8 @@ void test_flow_parse_less_than_eth_length()
 {
     setup_test();
     NP_ASSERT_FALSE(flow_parse
-                    (test_tuple, test_buffer, sizeof(ethernet_hdr_t) - 1, 0, NULL, NULL, 0, NULL));
+                    (test_tuple, test_buffer, sizeof(ethernet_hdr_t) - 1, 0, NULL, NULL, 0,
+                     NULL));
 }
 
 void test_flow_parse_udp()
@@ -848,7 +849,8 @@ void test_flow_parse_malformed_vlan_hdr_length()
 
     /* No VLAN length */
     NP_ASSERT_FALSE(flow_parse
-                    (test_tuple, test_buffer, len - sizeof(vlan_hdr_t), 0, NULL, NULL, 0, NULL));
+                    (test_tuple, test_buffer, len - sizeof(vlan_hdr_t), 0, NULL, NULL, 0,
+                     NULL));
     /* Partial VLAN length */
     NP_ASSERT_FALSE(flow_parse(test_tuple, test_buffer, len - 1, 0, NULL, NULL, 0, NULL));
 }
@@ -863,7 +865,8 @@ void test_flow_parse_malformed_ipv4_hdr_length()
 
     /* No IPv4 length */
     NP_ASSERT_FALSE(flow_parse
-                    (test_tuple, test_buffer, len - sizeof(ip_hdr_t), 0, NULL, NULL, 0, NULL));
+                    (test_tuple, test_buffer, len - sizeof(ip_hdr_t), 0, NULL, NULL, 0,
+                     NULL));
     /* Partial IPv4 length */
     NP_ASSERT_FALSE(flow_parse(test_tuple, test_buffer, len - 8, 0, NULL, NULL, 0, NULL));
 }
@@ -878,7 +881,8 @@ void test_flow_parse_malformed_ipv6_hdr_length()
 
     /* No IPv6 length */
     NP_ASSERT_FALSE(flow_parse
-                    (test_tuple, test_buffer, len - sizeof(ip6_hdr_t), 0, NULL, NULL, 0, NULL));
+                    (test_tuple, test_buffer, len - sizeof(ip6_hdr_t), 0, NULL, NULL, 0,
+                     NULL));
     /* Partial IPv6 length */
     NP_ASSERT_FALSE(flow_parse(test_tuple, test_buffer, len - 8, 0, NULL, NULL, 0, NULL));
 }
@@ -910,7 +914,8 @@ void test_flow_parse_malformed_tcp_hdr_length()
 
     /* No TCP length */
     NP_ASSERT_FALSE(flow_parse
-                    (test_tuple, test_buffer, len - sizeof(tcp_hdr_t), 0, NULL, NULL, 0, NULL));
+                    (test_tuple, test_buffer, len - sizeof(tcp_hdr_t), 0, NULL, NULL, 0,
+                     NULL));
     /* Partial TCP length */
     NP_ASSERT_FALSE(flow_parse(test_tuple, test_buffer, len - 4, 0, NULL, NULL, 0, NULL));
 }
@@ -926,7 +931,8 @@ void test_flow_parse_malformed_udp_hdr_length()
 
     /* No UDP length */
     NP_ASSERT_FALSE(flow_parse
-                    (test_tuple, test_buffer, len - sizeof(udp_hdr_t), 0, NULL, NULL, 0, NULL));
+                    (test_tuple, test_buffer, len - sizeof(udp_hdr_t), 0, NULL, NULL, 0,
+                     NULL));
     /* Partial UDP length */
     NP_ASSERT_FALSE(flow_parse(test_tuple, test_buffer, len - 4, 0, NULL, NULL, 0, NULL));
 }
@@ -938,7 +944,8 @@ void test_flow_parse_malformed_icmp_hdr_length()
     guint len = make_pkt(test_buffer, ETH_PROTOCOL_IP, IP_PROTOCOL_ICMP);
 
     /* No ICMP length */
-    NP_ASSERT(flow_parse(test_tuple, test_buffer, len - sizeof(icmp_hdr_t), 0, NULL, NULL, 0, NULL));
+    NP_ASSERT(flow_parse
+              (test_tuple, test_buffer, len - sizeof(icmp_hdr_t), 0, NULL, NULL, 0, NULL));
     /* Partial ICMP length */
     NP_ASSERT(flow_parse(test_tuple, test_buffer, len - 4, 0, NULL, NULL, 0, NULL));
 }
@@ -952,9 +959,11 @@ void test_flow_parse_malformed_ipv6_ext_hbh_length()
     guint len = (guint) (p - test_buffer);
 
     /* No HBH header length ( (4 + 1) * 8) */
-    NP_ASSERT_FALSE(flow_parse_ipv6(test_tuple, test_buffer, len - 40, NULL, NULL, 0, NULL));
+    NP_ASSERT_FALSE(flow_parse_ipv6
+                    (test_tuple, test_buffer, len - 40, NULL, NULL, 0, NULL));
     /* Partial part HBH header length */
-    NP_ASSERT_FALSE(flow_parse_ipv6(test_tuple, test_buffer, len - 39, NULL, NULL, 0, NULL));
+    NP_ASSERT_FALSE(flow_parse_ipv6
+                    (test_tuple, test_buffer, len - 39, NULL, NULL, 0, NULL));
     /* Partial full HBH length */
     NP_ASSERT_FALSE(flow_parse_ipv6(test_tuple, test_buffer, len - 8, NULL, NULL, 0, NULL));
 }
@@ -969,7 +978,8 @@ void test_flow_parse_malformed_ipv6_ext_frag_length()
 
     /* No Fragment header length */
     NP_ASSERT_FALSE(flow_parse_ipv6
-                    (test_tuple, test_buffer, len - sizeof(frag_hdr_t), NULL, NULL, 0, NULL));
+                    (test_tuple, test_buffer, len - sizeof(frag_hdr_t), NULL, NULL, 0,
+                     NULL));
     /* Partial Fragment length */
     NP_ASSERT_FALSE(flow_parse_ipv6(test_tuple, test_buffer, len - 4, NULL, NULL, 0, NULL));
 }
@@ -983,9 +993,11 @@ void test_flow_parse_malformed_ipv6_ext_auth_length()
     guint len = (guint) (p - test_buffer);
 
     /* No Auth length ( (4 + 2) * 4) */
-    NP_ASSERT_FALSE(flow_parse_ipv6(test_tuple, test_buffer, len - 24, NULL, NULL, 0, NULL));
+    NP_ASSERT_FALSE(flow_parse_ipv6
+                    (test_tuple, test_buffer, len - 24, NULL, NULL, 0, NULL));
     /* Partial part Auth header length */
-    NP_ASSERT_FALSE(flow_parse_ipv6(test_tuple, test_buffer, len - 23, NULL, NULL, 0, NULL));
+    NP_ASSERT_FALSE(flow_parse_ipv6
+                    (test_tuple, test_buffer, len - 23, NULL, NULL, 0, NULL));
     /* Partial full Auth length */
     NP_ASSERT_FALSE(flow_parse_ipv6(test_tuple, test_buffer, len - 8, NULL, NULL, 0, NULL));
 }
@@ -1066,8 +1078,8 @@ void test_flow_properties()
     NP_ASSERT_NOT_NULL(lip);
     NP_ASSERT_NOT_NULL(uip);
     NP_ASSERT_NOT_NULL(sip);
-    saddr_c = num_to_string((gchar*)&saddr, G_SOCKET_FAMILY_IPV4);
-    daddr_c = num_to_string((gchar*)&daddr, G_SOCKET_FAMILY_IPV4);
+    saddr_c = num_to_string((gchar *) & saddr, G_SOCKET_FAMILY_IPV4);
+    daddr_c = num_to_string((gchar *) & daddr, G_SOCKET_FAMILY_IPV4);
     NP_ASSERT_STR_EQUAL(saddr_c, lip);
     NP_ASSERT_STR_EQUAL(saddr_c, sip);
     NP_ASSERT_STR_EQUAL(daddr_c, uip);
@@ -1133,8 +1145,8 @@ void test_flow_properties_reversed()
     NP_ASSERT_NOT_NULL(lip);
     NP_ASSERT_NOT_NULL(uip);
     NP_ASSERT_NOT_NULL(sip);
-    saddr_c = num_to_string((gchar*)&saddr, G_SOCKET_FAMILY_IPV4);
-    daddr_c = num_to_string((gchar*)&daddr, G_SOCKET_FAMILY_IPV4);
+    saddr_c = num_to_string((gchar *) & saddr, G_SOCKET_FAMILY_IPV4);
+    daddr_c = num_to_string((gchar *) & daddr, G_SOCKET_FAMILY_IPV4);
     NP_ASSERT_STR_EQUAL(saddr_c, lip);
     NP_ASSERT_STR_EQUAL(saddr_c, sip);
     NP_ASSERT_STR_EQUAL(daddr_c, uip);
@@ -2067,7 +2079,7 @@ void test_clear_expired_frag_info()
     NP_ASSERT(non_expired->id == 0x3333);
 
     /* Do proper clean up */
-    clear_expired_frag_info(table->frag_info_list, now+1000000);
+    clear_expired_frag_info(table->frag_info_list, now + 1000000);
     g_object_unref(flow1);
     g_object_unref(table);
 }
@@ -2124,8 +2136,8 @@ void test_tuple_get_addresses()
     GInetAddress *dst = g_inet_address_new_from_string("192.168.1.2");
     g_inet_tuple_set_src_address(tuple, src);
     g_inet_tuple_set_dst_address(tuple, dst);
-    NP_ASSERT (g_inet_address_equal(src, g_inet_tuple_get_src(tuple)));
-    NP_ASSERT (g_inet_address_equal(dst, g_inet_tuple_get_dst(tuple)));
+    NP_ASSERT(g_inet_address_equal(src, g_inet_tuple_get_src(tuple)));
+    NP_ASSERT(g_inet_address_equal(dst, g_inet_tuple_get_dst(tuple)));
     g_object_unref(tuple);
 }
 
@@ -2143,12 +2155,12 @@ void test_tuple_get_endpoints()
     GInetSocketAddress *upper = g_inet_tuple_get_upper(tuple);
     GInetSocketAddress *server = g_inet_tuple_get_server(tuple);
 
-    NP_ASSERT (g_inet_socket_address_get_port(lower) == 80);
-    NP_ASSERT (g_inet_socket_address_get_port(upper) == 12345);
-    NP_ASSERT (g_inet_address_equal(g_inet_socket_address_get_address(lower), dst));
-    NP_ASSERT (g_inet_address_equal(g_inet_socket_address_get_address(upper), src));
-    NP_ASSERT (g_inet_socket_address_equal(server, lower));
-    NP_ASSERT (!g_inet_socket_address_equal(server, upper));
+    NP_ASSERT(g_inet_socket_address_get_port(lower) == 80);
+    NP_ASSERT(g_inet_socket_address_get_port(upper) == 12345);
+    NP_ASSERT(g_inet_address_equal(g_inet_socket_address_get_address(lower), dst));
+    NP_ASSERT(g_inet_address_equal(g_inet_socket_address_get_address(upper), src));
+    NP_ASSERT(g_inet_socket_address_equal(server, lower));
+    NP_ASSERT(!g_inet_socket_address_equal(server, upper));
 
     g_object_unref(tuple);
 }
@@ -2167,13 +2179,12 @@ void test_tuple_get_ipv6_endpoints()
     GInetSocketAddress *upper = g_inet_tuple_get_upper(tuple);
     GInetSocketAddress *server = g_inet_tuple_get_server(tuple);
 
-    NP_ASSERT (g_inet_socket_address_get_port(lower) == 80);
-    NP_ASSERT (g_inet_socket_address_get_port(upper) == 12345);
-    NP_ASSERT (g_inet_address_equal(g_inet_socket_address_get_address(lower), dst));
-    NP_ASSERT (g_inet_address_equal(g_inet_socket_address_get_address(upper), src));
-    NP_ASSERT (g_inet_socket_address_equal(server, lower));
-    NP_ASSERT (!g_inet_socket_address_equal(server, upper));
+    NP_ASSERT(g_inet_socket_address_get_port(lower) == 80);
+    NP_ASSERT(g_inet_socket_address_get_port(upper) == 12345);
+    NP_ASSERT(g_inet_address_equal(g_inet_socket_address_get_address(lower), dst));
+    NP_ASSERT(g_inet_address_equal(g_inet_socket_address_get_address(upper), src));
+    NP_ASSERT(g_inet_socket_address_equal(server, lower));
+    NP_ASSERT(!g_inet_socket_address_equal(server, upper));
 
     g_object_unref(tuple);
 }
-
