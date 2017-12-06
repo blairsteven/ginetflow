@@ -8,4 +8,4 @@ Description: GLib based IP flow manager
 Version: 1.0.0
 Requires: glib-2.0 gio-2.0
 Cflags: -I${includedir}
-Libs: -L${libdir} -lginetflow -lginettuple
+Libs: -L${libdir} -lginetflow
