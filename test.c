@@ -1,4 +1,4 @@
-/* GInetFlow - Unit tests
+/* GInetFlow / GInetTuple - Unit tests
  *
  * Copyright (C) 2017 ECLB Ltd
  *
@@ -16,10 +16,11 @@
  * along with this library. If not, see <http://www.gnu.org/licenses/>
  */
 #include "ginetflow.c"
+#include "ginettuple.c"
 #include <arpa/inet.h>
 #include <np.h>
 
-static GInetFlow test_flow;
+static GInetTuple *test_tuple;
 #define MAX_BUFFER_SIZE     1600
 
 #define TEST_SPORT 0x1111
@@ -541,51 +542,56 @@ static guint make_pkt_gre(guint8 * buffer, guint16 eth_protocol, guint16 gre_pro
 
 static void setup_test()
 {
-    memset(&test_flow, 0, sizeof(GInetFlow));
+    if (test_tuple)
+        g_object_unref(test_tuple);
+    test_tuple = (GInetTuple *) g_object_new(G_INET_TUPLE_TYPE, NULL);
     memset(test_buffer, 0, MAX_BUFFER_SIZE);
 }
 
 void test_flow_parse_null_flow()
 {
     setup_test();
-    NP_ASSERT_FALSE(flow_parse(NULL, test_buffer, 64, 0, NULL, NULL));
+    NP_ASSERT_FALSE(flow_parse(NULL, test_buffer, 64, 0, NULL, NULL, 0, NULL));
 }
 
 void test_flow_parse_null_buffer()
 {
     setup_test();
-    NP_ASSERT_FALSE(flow_parse(&test_flow, NULL, 64, 0, NULL, NULL));
+    NP_ASSERT_FALSE(flow_parse(test_tuple, NULL, 64, 0, NULL, NULL, 0, NULL));
 }
 
 void test_flow_parse_0_length()
 {
     setup_test();
-    NP_ASSERT_FALSE(flow_parse(&test_flow, test_buffer, 0, 0, NULL, NULL));
+    NP_ASSERT_FALSE(flow_parse(test_tuple, test_buffer, 0, 0, NULL, NULL, 0, NULL));
 }
 
 void test_flow_parse_less_than_eth_length()
 {
     setup_test();
     NP_ASSERT_FALSE(flow_parse
-                    (&test_flow, test_buffer, sizeof(ethernet_hdr_t) - 1, 0, NULL, NULL));
+                    (test_tuple, test_buffer, sizeof(ethernet_hdr_t) - 1, 0, NULL, NULL, 0,
+                     NULL));
 }
 
 void test_flow_parse_udp()
 {
     setup_test();
 
+    GInetTuple *test = (GInetTuple *) g_object_new(G_INET_TUPLE_TYPE, NULL);
     guint len = make_pkt(test_buffer, ETH_PROTOCOL_IP, IP_PROTOCOL_UDP);
-    NP_ASSERT(flow_parse(&test_flow, test_buffer, len, 0, NULL, NULL));
+    NP_ASSERT(flow_parse(test, test_buffer, len, 0, NULL, NULL, 0, NULL));
 
     len = make_pkt(test_buffer, ETH_PROTOCOL_IPV6, IP_PROTOCOL_UDP);
-    NP_ASSERT(flow_parse(&test_flow, test_buffer, len, 0, NULL, NULL));
+    NP_ASSERT(flow_parse(test, test_buffer, len, 0, NULL, NULL, 0, NULL));
 
     /* Reverse */
     len = make_pkt_reverse(test_buffer, ETH_PROTOCOL_IP, IP_PROTOCOL_UDP);
-    NP_ASSERT(flow_parse(&test_flow, test_buffer, len, 0, NULL, NULL));
+    NP_ASSERT(flow_parse(test, test_buffer, len, 0, NULL, NULL, 0, NULL));
 
     len = make_pkt_reverse(test_buffer, ETH_PROTOCOL_IPV6, IP_PROTOCOL_UDP);
-    NP_ASSERT(flow_parse(&test_flow, test_buffer, len, 0, NULL, NULL));
+    NP_ASSERT(flow_parse(test, test_buffer, len, 0, NULL, NULL, 0, NULL));
+    g_object_unref(test);
 }
 
 void test_flow_parse_tcp()
@@ -593,17 +599,17 @@ void test_flow_parse_tcp()
     setup_test();
 
     guint len = make_pkt(test_buffer, ETH_PROTOCOL_IP, IP_PROTOCOL_TCP);
-    NP_ASSERT(flow_parse(&test_flow, test_buffer, len, 0, NULL, NULL));
+    NP_ASSERT(flow_parse(test_tuple, test_buffer, len, 0, NULL, NULL, 0, NULL));
 
     len = make_pkt(test_buffer, ETH_PROTOCOL_IPV6, IP_PROTOCOL_TCP);
-    NP_ASSERT(flow_parse(&test_flow, test_buffer, len, 0, NULL, NULL));
+    NP_ASSERT(flow_parse(test_tuple, test_buffer, len, 0, NULL, NULL, 0, NULL));
 
     /* Reverse */
     len = make_pkt_reverse(test_buffer, ETH_PROTOCOL_IP, IP_PROTOCOL_TCP);
-    NP_ASSERT(flow_parse(&test_flow, test_buffer, len, 0, NULL, NULL));
+    NP_ASSERT(flow_parse(test_tuple, test_buffer, len, 0, NULL, NULL, 0, NULL));
 
     len = make_pkt_reverse(test_buffer, ETH_PROTOCOL_IPV6, IP_PROTOCOL_TCP);
-    NP_ASSERT(flow_parse(&test_flow, test_buffer, len, 0, NULL, NULL));
+    NP_ASSERT(flow_parse(test_tuple, test_buffer, len, 0, NULL, NULL, 0, NULL));
 }
 
 void test_flow_parse_icmp()
@@ -611,10 +617,10 @@ void test_flow_parse_icmp()
     setup_test();
 
     guint len = make_pkt(test_buffer, ETH_PROTOCOL_IP, IP_PROTOCOL_ICMP);
-    NP_ASSERT(flow_parse(&test_flow, test_buffer, len, 0, NULL, NULL));
+    NP_ASSERT(flow_parse(test_tuple, test_buffer, len, 0, NULL, NULL, 0, NULL));
 
     len = make_pkt(test_buffer, ETH_PROTOCOL_IPV6, IP_PROTOCOL_ICMPV6);
-    NP_ASSERT(flow_parse(&test_flow, test_buffer, len, 0, NULL, NULL));
+    NP_ASSERT(flow_parse(test_tuple, test_buffer, len, 0, NULL, NULL, 0, NULL));
 }
 
 void test_flow_parse_pppoe()
@@ -622,10 +628,10 @@ void test_flow_parse_pppoe()
     setup_test();
 
     guint len = make_pkt_pppoe(test_buffer, IP_PROTOCOL_UDP, PPP_PROTOCOL_IPV4);
-    NP_ASSERT(flow_parse(&test_flow, test_buffer, len, 0, NULL, NULL));
+    NP_ASSERT(flow_parse(test_tuple, test_buffer, len, 0, NULL, NULL, 0, NULL));
 
     len = make_pkt_pppoe(test_buffer, IP_PROTOCOL_UDP, PPP_PROTOCOL_IPV6);
-    NP_ASSERT(flow_parse(&test_flow, test_buffer, len, 0, NULL, NULL));
+    NP_ASSERT(flow_parse(test_tuple, test_buffer, len, 0, NULL, NULL, 0, NULL));
 }
 
 void test_flow_parse_vlan()
@@ -635,25 +641,25 @@ void test_flow_parse_vlan()
     guint len =
         make_pkt_vlan(test_buffer, ETH_PROTOCOL_IP, ETH_PROTOCOL_8021Q, IP_PROTOCOL_ICMP,
                       1);
-    NP_ASSERT(flow_parse(&test_flow, test_buffer, len, 0, NULL, NULL));
+    NP_ASSERT(flow_parse(test_tuple, test_buffer, len, 0, NULL, NULL, 0, NULL));
 
     len =
         make_pkt_vlan(test_buffer, ETH_PROTOCOL_IP, ETH_PROTOCOL_8021Q, IP_PROTOCOL_ICMP,
                       2);
-    NP_ASSERT(flow_parse(&test_flow, test_buffer, len, 0, NULL, NULL));
+    NP_ASSERT(flow_parse(test_tuple, test_buffer, len, 0, NULL, NULL, 0, NULL));
 
     len =
         make_pkt_vlan(test_buffer, ETH_PROTOCOL_IPV6, ETH_PROTOCOL_8021AD,
                       IP_PROTOCOL_ICMPV6, 1);
-    NP_ASSERT(flow_parse(&test_flow, test_buffer, len, 0, NULL, NULL));
+    NP_ASSERT(flow_parse(test_tuple, test_buffer, len, 0, NULL, NULL, 0, NULL));
 
     len =
         make_pkt_vlan(test_buffer, ETH_PROTOCOL_IPV6, ETH_PROTOCOL_8021AD,
                       IP_PROTOCOL_ICMPV6, 2);
-    NP_ASSERT(flow_parse(&test_flow, test_buffer, len, 0, NULL, NULL));
+    NP_ASSERT(flow_parse(test_tuple, test_buffer, len, 0, NULL, NULL, 0, NULL));
 
     len = make_pkt_vlan_Q_AD(test_buffer, ETH_PROTOCOL_IPV6, IP_PROTOCOL_ICMPV6);
-    NP_ASSERT(flow_parse(&test_flow, test_buffer, len, 0, NULL, NULL));
+    NP_ASSERT(flow_parse(test_tuple, test_buffer, len, 0, NULL, NULL, 0, NULL));
 }
 
 void test_flow_parse_mpls()
@@ -662,16 +668,16 @@ void test_flow_parse_mpls()
     setup_test();
 
     len = make_pkt_mpls(test_buffer, 0x1, ETH_PROTOCOL_IP, IP_PROTOCOL_ICMP, 1);
-    NP_ASSERT(flow_parse(&test_flow, test_buffer, len, 0, NULL, NULL));
+    NP_ASSERT(flow_parse(test_tuple, test_buffer, len, 0, NULL, NULL, 0, NULL));
 
     len = make_pkt_mpls(test_buffer, 0x2, ETH_PROTOCOL_IP, IP_PROTOCOL_ICMP, 2);
-    NP_ASSERT(flow_parse(&test_flow, test_buffer, len, 0, NULL, NULL));
+    NP_ASSERT(flow_parse(test_tuple, test_buffer, len, 0, NULL, NULL, 0, NULL));
 
     len = make_pkt_mpls(test_buffer, 0x3, ETH_PROTOCOL_IPV6, IP_PROTOCOL_ICMPV6, 1);
-    NP_ASSERT(flow_parse(&test_flow, test_buffer, len, 0, NULL, NULL));
+    NP_ASSERT(flow_parse(test_tuple, test_buffer, len, 0, NULL, NULL, 0, NULL));
 
     len = make_pkt_mpls(test_buffer, 0x4, ETH_PROTOCOL_IPV6, IP_PROTOCOL_ICMPV6, 2);
-    NP_ASSERT(flow_parse(&test_flow, test_buffer, len, 0, NULL, NULL));
+    NP_ASSERT(flow_parse(test_tuple, test_buffer, len, 0, NULL, NULL, 0, NULL));
 }
 
 void test_flow_parse_ipv6_ext()
@@ -679,46 +685,46 @@ void test_flow_parse_ipv6_ext()
     setup_test();
 
     guint len = make_pkt_ipv6_ext(test_buffer, IP_PROTOCOL_HBH_OPT, FALSE);
-    NP_ASSERT(flow_parse_ipv6(&test_flow, test_buffer, len, NULL, NULL));
+    NP_ASSERT(flow_parse_ipv6(test_tuple, test_buffer, len, NULL, NULL, 0, NULL));
 
     len = make_pkt_ipv6_ext(test_buffer, IP_PROTOCOL_DEST_OPT, FALSE);
-    NP_ASSERT(flow_parse_ipv6(&test_flow, test_buffer, len, NULL, NULL));
+    NP_ASSERT(flow_parse_ipv6(test_tuple, test_buffer, len, NULL, NULL, 0, NULL));
 
     len = make_pkt_ipv6_ext(test_buffer, IP_PROTOCOL_ROUTING, FALSE);
-    NP_ASSERT(flow_parse_ipv6(&test_flow, test_buffer, len, NULL, NULL));
+    NP_ASSERT(flow_parse_ipv6(test_tuple, test_buffer, len, NULL, NULL, 0, NULL));
 
     len = make_pkt_ipv6_ext(test_buffer, IP_PROTOCOL_MOBILITY, FALSE);
-    NP_ASSERT(flow_parse_ipv6(&test_flow, test_buffer, len, NULL, NULL));
+    NP_ASSERT(flow_parse_ipv6(test_tuple, test_buffer, len, NULL, NULL, 0, NULL));
 
     len = make_pkt_ipv6_ext(test_buffer, IP_PROTOCOL_HIPV2, FALSE);
-    NP_ASSERT(flow_parse_ipv6(&test_flow, test_buffer, len, NULL, NULL));
+    NP_ASSERT(flow_parse_ipv6(test_tuple, test_buffer, len, NULL, NULL, 0, NULL));
 
     len = make_pkt_ipv6_ext(test_buffer, IP_PROTOCOL_SHIM6, FALSE);
-    NP_ASSERT(flow_parse_ipv6(&test_flow, test_buffer, len, NULL, NULL));
+    NP_ASSERT(flow_parse_ipv6(test_tuple, test_buffer, len, NULL, NULL, 0, NULL));
 
     len = make_pkt_ipv6_ext(test_buffer, IP_PROTOCOL_FRAGMENT, FALSE);
-    NP_ASSERT(flow_parse_ipv6(&test_flow, test_buffer, len, NULL, NULL));
+    NP_ASSERT(flow_parse_ipv6(test_tuple, test_buffer, len, NULL, NULL, 0, NULL));
 
     len = make_pkt_ipv6_ext(test_buffer, IP_PROTOCOL_AUTH, FALSE);
-    NP_ASSERT(flow_parse_ipv6(&test_flow, test_buffer, len, NULL, NULL));
+    NP_ASSERT(flow_parse_ipv6(test_tuple, test_buffer, len, NULL, NULL, 0, NULL));
 
     len = make_pkt_ipv6_ext(test_buffer, IP_PROTOCOL_SCTP, FALSE);
-    NP_ASSERT(flow_parse_ipv6(&test_flow, test_buffer, len, NULL, NULL));
+    NP_ASSERT(flow_parse_ipv6(test_tuple, test_buffer, len, NULL, NULL, 0, NULL));
 
     len = make_pkt_ipv6_ext(test_buffer, IP_PROTOCOL_SCTP, TRUE);
-    NP_ASSERT(flow_parse_ipv6(&test_flow, test_buffer, len, NULL, NULL));
+    NP_ASSERT(flow_parse_ipv6(test_tuple, test_buffer, len, NULL, NULL, 0, NULL));
 
     len = make_pkt_ipv6_ext(test_buffer, IP_PROTOCOL_IPV4, FALSE);
-    NP_ASSERT(flow_parse_ipv6(&test_flow, test_buffer, len, NULL, NULL));
+    NP_ASSERT(flow_parse_ipv6(test_tuple, test_buffer, len, NULL, NULL, 0, NULL));
 
     len = make_pkt_ipv6_ext(test_buffer, IP_PROTOCOL_IPV6, FALSE);
-    NP_ASSERT(flow_parse_ipv6(&test_flow, test_buffer, len, NULL, NULL));
+    NP_ASSERT(flow_parse_ipv6(test_tuple, test_buffer, len, NULL, NULL, 0, NULL));
 
     len = make_pkt_ipv6_ext(test_buffer, IP_PROTOCOL_ESP, FALSE);
-    NP_ASSERT(flow_parse_ipv6(&test_flow, test_buffer, len, NULL, NULL));
+    NP_ASSERT(flow_parse_ipv6(test_tuple, test_buffer, len, NULL, NULL, 0, NULL));
 
     len = make_pkt_ipv6_ext(test_buffer, IP_PROTOCOL_NO_NEXT_HDR, FALSE);
-    NP_ASSERT(flow_parse_ipv6(&test_flow, test_buffer, len, NULL, NULL));
+    NP_ASSERT(flow_parse_ipv6(test_tuple, test_buffer, len, NULL, NULL, 0, NULL));
 }
 
 void test_flow_parse_gre()
@@ -727,23 +733,23 @@ void test_flow_parse_gre()
     setup_test();
 
     len = make_pkt_gre(test_buffer, ETH_PROTOCOL_IP, ETH_PROTOCOL_IP, IP_PROTOCOL_ICMP);
-    NP_ASSERT(flow_parse(&test_flow, test_buffer, len, 0, NULL, NULL));
-    NP_ASSERT(test_flow.tuple.protocol == IP_PROTOCOL_ICMP);
+    NP_ASSERT(flow_parse(test_tuple, test_buffer, len, 0, NULL, NULL, 0, NULL));
+    NP_ASSERT(g_inet_tuple_get_protocol(test_tuple) == IP_PROTOCOL_ICMP);
 
     len = make_pkt_gre(test_buffer, ETH_PROTOCOL_IP,
                        ETH_PROTOCOL_PPPOE_SESS, IP_PROTOCOL_ICMP);
-    NP_ASSERT(flow_parse(&test_flow, test_buffer, len, 0, NULL, NULL));
-    NP_ASSERT(test_flow.tuple.protocol == IP_PROTOCOL_GRE);
+    NP_ASSERT(flow_parse(test_tuple, test_buffer, len, 0, NULL, NULL, 0, NULL));
+    NP_ASSERT(g_inet_tuple_get_protocol(test_tuple) == IP_PROTOCOL_GRE);
 
     len = make_pkt_gre(test_buffer, ETH_PROTOCOL_IPV6,
                        ETH_PROTOCOL_IPV6, IP_PROTOCOL_ICMPV6);
-    NP_ASSERT(flow_parse(&test_flow, test_buffer, len, 0, NULL, NULL));
-    NP_ASSERT(test_flow.tuple.protocol == IP_PROTOCOL_ICMPV6);
+    NP_ASSERT(flow_parse(test_tuple, test_buffer, len, 0, NULL, NULL, 0, NULL));
+    NP_ASSERT(g_inet_tuple_get_protocol(test_tuple) == IP_PROTOCOL_ICMPV6);
 
     len = make_pkt_gre(test_buffer, ETH_PROTOCOL_IPV6,
                        ETH_PROTOCOL_PPPOE_SESS, IP_PROTOCOL_ICMPV6);
-    NP_ASSERT(flow_parse(&test_flow, test_buffer, len, 0, NULL, NULL));
-    NP_ASSERT(test_flow.tuple.protocol == IP_PROTOCOL_GRE);
+    NP_ASSERT(flow_parse(test_tuple, test_buffer, len, 0, NULL, NULL, 0, NULL));
+    NP_ASSERT(g_inet_tuple_get_protocol(test_tuple) == IP_PROTOCOL_GRE);
 }
 
 void test_flow_parse_unsupported_eth_protocols()
@@ -752,19 +758,19 @@ void test_flow_parse_unsupported_eth_protocols()
 
     /* ARP */
     guint len = make_pkt(test_buffer, 0x0806, IP_PROTOCOL_ICMP);
-    NP_ASSERT_FALSE(flow_parse(&test_flow, test_buffer, len, 0, NULL, NULL));
+    NP_ASSERT_FALSE(flow_parse(test_tuple, test_buffer, len, 0, NULL, NULL, 0, NULL));
 
     /* AARP */
     len = make_pkt(test_buffer, 0x80F3, IP_PROTOCOL_ICMP);
-    NP_ASSERT_FALSE(flow_parse(&test_flow, test_buffer, len, 0, NULL, NULL));
+    NP_ASSERT_FALSE(flow_parse(test_tuple, test_buffer, len, 0, NULL, NULL, 0, NULL));
 
     /* IPX */
     len = make_pkt(test_buffer, 0x8137, IP_PROTOCOL_ICMP);
-    NP_ASSERT_FALSE(flow_parse(&test_flow, test_buffer, len, 0, NULL, NULL));
+    NP_ASSERT_FALSE(flow_parse(test_tuple, test_buffer, len, 0, NULL, NULL, 0, NULL));
 
     /* PPPoE Discovery */
     len = make_pkt(test_buffer, 0x8863, IP_PROTOCOL_ICMP);
-    NP_ASSERT_FALSE(flow_parse(&test_flow, test_buffer, len, 0, NULL, NULL));
+    NP_ASSERT_FALSE(flow_parse(test_tuple, test_buffer, len, 0, NULL, NULL, 0, NULL));
 }
 
 void test_flow_parse_not_ipv6_ext()
@@ -773,11 +779,11 @@ void test_flow_parse_not_ipv6_ext()
 
     /* KRYPTOLAN */
     guint len = make_pkt_ipv6_ext(test_buffer, 65, FALSE);
-    NP_ASSERT(flow_parse_ipv6(&test_flow, test_buffer, len, NULL, NULL));
+    NP_ASSERT(flow_parse_ipv6(test_tuple, test_buffer, len, NULL, NULL, 0, NULL));
 
     /* IGMP */
     len = make_pkt_ipv6_ext(test_buffer, 2, FALSE);
-    NP_ASSERT(flow_parse_ipv6(&test_flow, test_buffer, len, NULL, NULL));
+    NP_ASSERT(flow_parse_ipv6(test_tuple, test_buffer, len, NULL, NULL, 0, NULL));
 }
 
 void test_flow_parse_unsupported_transport_protocols()
@@ -786,19 +792,19 @@ void test_flow_parse_unsupported_transport_protocols()
 
     /* CRUDP */
     guint len = make_pkt(test_buffer, ETH_PROTOCOL_IP, 127);
-    NP_ASSERT(flow_parse(&test_flow, test_buffer, len, 0, NULL, NULL));
+    NP_ASSERT(flow_parse(test_tuple, test_buffer, len, 0, NULL, NULL, 0, NULL));
 
     /* UDPLite */
     len = make_pkt(test_buffer, ETH_PROTOCOL_IP, 136);
-    NP_ASSERT(flow_parse(&test_flow, test_buffer, len, 0, NULL, NULL));
+    NP_ASSERT(flow_parse(test_tuple, test_buffer, len, 0, NULL, NULL, 0, NULL));
 
     /* IL */
     len = make_pkt(test_buffer, ETH_PROTOCOL_IPV6, 40);
-    NP_ASSERT(flow_parse(&test_flow, test_buffer, len, 0, NULL, NULL));
+    NP_ASSERT(flow_parse(test_tuple, test_buffer, len, 0, NULL, NULL, 0, NULL));
 
     /* IPv4 SCTP */
     len = make_pkt(test_buffer, ETH_PROTOCOL_IP, IP_PROTOCOL_SCTP);
-    NP_ASSERT(flow_parse(&test_flow, test_buffer, len, 0, NULL, NULL));
+    NP_ASSERT(flow_parse(test_tuple, test_buffer, len, 0, NULL, NULL, 0, NULL));
 }
 
 void test_flow_parse_unsupported_ppp_protocols()
@@ -807,15 +813,15 @@ void test_flow_parse_unsupported_ppp_protocols()
 
     /* IPCP */
     guint len = make_pkt_pppoe(test_buffer, IP_PROTOCOL_UDP, 0x8021);
-    NP_ASSERT_FALSE(flow_parse(&test_flow, test_buffer, len, 0, NULL, NULL));
+    NP_ASSERT_FALSE(flow_parse(test_tuple, test_buffer, len, 0, NULL, NULL, 0, NULL));
 
     /* ATCP */
     len = make_pkt_pppoe(test_buffer, IP_PROTOCOL_UDP, 0x8029);
-    NP_ASSERT_FALSE(flow_parse(&test_flow, test_buffer, len, 0, NULL, NULL));
+    NP_ASSERT_FALSE(flow_parse(test_tuple, test_buffer, len, 0, NULL, NULL, 0, NULL));
 
     /* IPXCP */
     len = make_pkt_pppoe(test_buffer, IP_PROTOCOL_UDP, 0x802B);
-    NP_ASSERT_FALSE(flow_parse(&test_flow, test_buffer, len, 0, NULL, NULL));
+    NP_ASSERT_FALSE(flow_parse(test_tuple, test_buffer, len, 0, NULL, NULL, 0, NULL));
 }
 
 void test_flow_parse_more_than_2_vlan_tags()
@@ -825,12 +831,12 @@ void test_flow_parse_more_than_2_vlan_tags()
     guint len =
         make_pkt_vlan(test_buffer, ETH_PROTOCOL_IP, ETH_PROTOCOL_8021Q, IP_PROTOCOL_ICMP,
                       3);
-    NP_ASSERT_FALSE(flow_parse(&test_flow, test_buffer, len, 0, NULL, NULL));
+    NP_ASSERT_FALSE(flow_parse(test_tuple, test_buffer, len, 0, NULL, NULL, 0, NULL));
 
     len =
         make_pkt_vlan(test_buffer, ETH_PROTOCOL_IPV6, ETH_PROTOCOL_8021AD,
                       IP_PROTOCOL_ICMPV6, 3);
-    NP_ASSERT_FALSE(flow_parse(&test_flow, test_buffer, len, 0, NULL, NULL));
+    NP_ASSERT_FALSE(flow_parse(test_tuple, test_buffer, len, 0, NULL, NULL, 0, NULL));
 }
 
 void test_flow_parse_malformed_vlan_hdr_length()
@@ -843,9 +849,10 @@ void test_flow_parse_malformed_vlan_hdr_length()
 
     /* No VLAN length */
     NP_ASSERT_FALSE(flow_parse
-                    (&test_flow, test_buffer, len - sizeof(vlan_hdr_t), 0, NULL, NULL));
+                    (test_tuple, test_buffer, len - sizeof(vlan_hdr_t), 0, NULL, NULL, 0,
+                     NULL));
     /* Partial VLAN length */
-    NP_ASSERT_FALSE(flow_parse(&test_flow, test_buffer, len - 1, 0, NULL, NULL));
+    NP_ASSERT_FALSE(flow_parse(test_tuple, test_buffer, len - 1, 0, NULL, NULL, 0, NULL));
 }
 
 void test_flow_parse_malformed_ipv4_hdr_length()
@@ -858,9 +865,10 @@ void test_flow_parse_malformed_ipv4_hdr_length()
 
     /* No IPv4 length */
     NP_ASSERT_FALSE(flow_parse
-                    (&test_flow, test_buffer, len - sizeof(ip_hdr_t), 0, NULL, NULL));
+                    (test_tuple, test_buffer, len - sizeof(ip_hdr_t), 0, NULL, NULL, 0,
+                     NULL));
     /* Partial IPv4 length */
-    NP_ASSERT_FALSE(flow_parse(&test_flow, test_buffer, len - 8, 0, NULL, NULL));
+    NP_ASSERT_FALSE(flow_parse(test_tuple, test_buffer, len - 8, 0, NULL, NULL, 0, NULL));
 }
 
 void test_flow_parse_malformed_ipv6_hdr_length()
@@ -873,9 +881,10 @@ void test_flow_parse_malformed_ipv6_hdr_length()
 
     /* No IPv6 length */
     NP_ASSERT_FALSE(flow_parse
-                    (&test_flow, test_buffer, len - sizeof(ip6_hdr_t), 0, NULL, NULL));
+                    (test_tuple, test_buffer, len - sizeof(ip6_hdr_t), 0, NULL, NULL, 0,
+                     NULL));
     /* Partial IPv6 length */
-    NP_ASSERT_FALSE(flow_parse(&test_flow, test_buffer, len - 8, 0, NULL, NULL));
+    NP_ASSERT_FALSE(flow_parse(test_tuple, test_buffer, len - 8, 0, NULL, NULL, 0, NULL));
 }
 
 void test_flow_parse_malformed_pppoe_hdr_length()
@@ -888,10 +897,10 @@ void test_flow_parse_malformed_pppoe_hdr_length()
 
     /* No PPPoE length */
     NP_ASSERT_FALSE(flow_parse
-                    (&test_flow, test_buffer, len - sizeof(pppoe_sess_hdr_t), 0, NULL,
-                     NULL));
+                    (test_tuple, test_buffer, len - sizeof(pppoe_sess_hdr_t), 0, NULL,
+                     NULL, 0, NULL));
     /* Partial PPPoE length */
-    NP_ASSERT_FALSE(flow_parse(&test_flow, test_buffer, len - 2, 0, NULL, NULL));
+    NP_ASSERT_FALSE(flow_parse(test_tuple, test_buffer, len - 2, 0, NULL, NULL, 0, NULL));
 }
 
 void test_flow_parse_malformed_tcp_hdr_length()
@@ -905,9 +914,10 @@ void test_flow_parse_malformed_tcp_hdr_length()
 
     /* No TCP length */
     NP_ASSERT_FALSE(flow_parse
-                    (&test_flow, test_buffer, len - sizeof(tcp_hdr_t), 0, NULL, NULL));
+                    (test_tuple, test_buffer, len - sizeof(tcp_hdr_t), 0, NULL, NULL, 0,
+                     NULL));
     /* Partial TCP length */
-    NP_ASSERT_FALSE(flow_parse(&test_flow, test_buffer, len - 4, 0, NULL, NULL));
+    NP_ASSERT_FALSE(flow_parse(test_tuple, test_buffer, len - 4, 0, NULL, NULL, 0, NULL));
 }
 
 void test_flow_parse_malformed_udp_hdr_length()
@@ -921,9 +931,10 @@ void test_flow_parse_malformed_udp_hdr_length()
 
     /* No UDP length */
     NP_ASSERT_FALSE(flow_parse
-                    (&test_flow, test_buffer, len - sizeof(udp_hdr_t), 0, NULL, NULL));
+                    (test_tuple, test_buffer, len - sizeof(udp_hdr_t), 0, NULL, NULL, 0,
+                     NULL));
     /* Partial UDP length */
-    NP_ASSERT_FALSE(flow_parse(&test_flow, test_buffer, len - 4, 0, NULL, NULL));
+    NP_ASSERT_FALSE(flow_parse(test_tuple, test_buffer, len - 4, 0, NULL, NULL, 0, NULL));
 }
 
 void test_flow_parse_malformed_icmp_hdr_length()
@@ -933,9 +944,10 @@ void test_flow_parse_malformed_icmp_hdr_length()
     guint len = make_pkt(test_buffer, ETH_PROTOCOL_IP, IP_PROTOCOL_ICMP);
 
     /* No ICMP length */
-    NP_ASSERT(flow_parse(&test_flow, test_buffer, len - sizeof(icmp_hdr_t), 0, NULL, NULL));
+    NP_ASSERT(flow_parse
+              (test_tuple, test_buffer, len - sizeof(icmp_hdr_t), 0, NULL, NULL, 0, NULL));
     /* Partial ICMP length */
-    NP_ASSERT(flow_parse(&test_flow, test_buffer, len - 4, 0, NULL, NULL));
+    NP_ASSERT(flow_parse(test_tuple, test_buffer, len - 4, 0, NULL, NULL, 0, NULL));
 }
 
 void test_flow_parse_malformed_ipv6_ext_hbh_length()
@@ -947,11 +959,13 @@ void test_flow_parse_malformed_ipv6_ext_hbh_length()
     guint len = (guint) (p - test_buffer);
 
     /* No HBH header length ( (4 + 1) * 8) */
-    NP_ASSERT_FALSE(flow_parse_ipv6(&test_flow, test_buffer, len - 40, NULL, NULL));
+    NP_ASSERT_FALSE(flow_parse_ipv6
+                    (test_tuple, test_buffer, len - 40, NULL, NULL, 0, NULL));
     /* Partial part HBH header length */
-    NP_ASSERT_FALSE(flow_parse_ipv6(&test_flow, test_buffer, len - 39, NULL, NULL));
+    NP_ASSERT_FALSE(flow_parse_ipv6
+                    (test_tuple, test_buffer, len - 39, NULL, NULL, 0, NULL));
     /* Partial full HBH length */
-    NP_ASSERT_FALSE(flow_parse_ipv6(&test_flow, test_buffer, len - 8, NULL, NULL));
+    NP_ASSERT_FALSE(flow_parse_ipv6(test_tuple, test_buffer, len - 8, NULL, NULL, 0, NULL));
 }
 
 void test_flow_parse_malformed_ipv6_ext_frag_length()
@@ -964,9 +978,10 @@ void test_flow_parse_malformed_ipv6_ext_frag_length()
 
     /* No Fragment header length */
     NP_ASSERT_FALSE(flow_parse_ipv6
-                    (&test_flow, test_buffer, len - sizeof(frag_hdr_t), NULL, NULL));
+                    (test_tuple, test_buffer, len - sizeof(frag_hdr_t), NULL, NULL, 0,
+                     NULL));
     /* Partial Fragment length */
-    NP_ASSERT_FALSE(flow_parse_ipv6(&test_flow, test_buffer, len - 4, NULL, NULL));
+    NP_ASSERT_FALSE(flow_parse_ipv6(test_tuple, test_buffer, len - 4, NULL, NULL, 0, NULL));
 }
 
 void test_flow_parse_malformed_ipv6_ext_auth_length()
@@ -978,11 +993,13 @@ void test_flow_parse_malformed_ipv6_ext_auth_length()
     guint len = (guint) (p - test_buffer);
 
     /* No Auth length ( (4 + 2) * 4) */
-    NP_ASSERT_FALSE(flow_parse_ipv6(&test_flow, test_buffer, len - 24, NULL, NULL));
+    NP_ASSERT_FALSE(flow_parse_ipv6
+                    (test_tuple, test_buffer, len - 24, NULL, NULL, 0, NULL));
     /* Partial part Auth header length */
-    NP_ASSERT_FALSE(flow_parse_ipv6(&test_flow, test_buffer, len - 23, NULL, NULL));
+    NP_ASSERT_FALSE(flow_parse_ipv6
+                    (test_tuple, test_buffer, len - 23, NULL, NULL, 0, NULL));
     /* Partial full Auth length */
-    NP_ASSERT_FALSE(flow_parse_ipv6(&test_flow, test_buffer, len - 8, NULL, NULL));
+    NP_ASSERT_FALSE(flow_parse_ipv6(test_tuple, test_buffer, len - 8, NULL, NULL, 0, NULL));
 }
 
 void test_flow_parse_malformed_ipv6_ext_sctp_length()
@@ -995,9 +1012,9 @@ void test_flow_parse_malformed_ipv6_ext_sctp_length()
 
     /* No SCTP length */
     NP_ASSERT_FALSE(flow_parse_ipv6
-                    (&test_flow, test_buffer, sizeof(sctp_hdr_t), NULL, NULL));
+                    (test_tuple, test_buffer, sizeof(sctp_hdr_t), NULL, NULL, 0, NULL));
     /* Partial SCTP length */
-    NP_ASSERT_FALSE(flow_parse_ipv6(&test_flow, test_buffer, len - 8, NULL, NULL));
+    NP_ASSERT_FALSE(flow_parse_ipv6(test_tuple, test_buffer, len - 8, NULL, NULL, 0, NULL));
 }
 
 gchar *num_to_string(guint8 * number, GSocketFamily family)
@@ -1061,8 +1078,8 @@ void test_flow_properties()
     NP_ASSERT_NOT_NULL(lip);
     NP_ASSERT_NOT_NULL(uip);
     NP_ASSERT_NOT_NULL(sip);
-    saddr_c = num_to_string((gchar*)&saddr, G_SOCKET_FAMILY_IPV4);
-    daddr_c = num_to_string((gchar*)&daddr, G_SOCKET_FAMILY_IPV4);
+    saddr_c = num_to_string((gchar *) & saddr, G_SOCKET_FAMILY_IPV4);
+    daddr_c = num_to_string((gchar *) & daddr, G_SOCKET_FAMILY_IPV4);
     NP_ASSERT_STR_EQUAL(saddr_c, lip);
     NP_ASSERT_STR_EQUAL(saddr_c, sip);
     NP_ASSERT_STR_EQUAL(daddr_c, uip);
@@ -1128,8 +1145,8 @@ void test_flow_properties_reversed()
     NP_ASSERT_NOT_NULL(lip);
     NP_ASSERT_NOT_NULL(uip);
     NP_ASSERT_NOT_NULL(sip);
-    saddr_c = num_to_string((gchar*)&saddr, G_SOCKET_FAMILY_IPV4);
-    daddr_c = num_to_string((gchar*)&daddr, G_SOCKET_FAMILY_IPV4);
+    saddr_c = num_to_string((gchar *) & saddr, G_SOCKET_FAMILY_IPV4);
+    daddr_c = num_to_string((gchar *) & daddr, G_SOCKET_FAMILY_IPV4);
     NP_ASSERT_STR_EQUAL(saddr_c, lip);
     NP_ASSERT_STR_EQUAL(saddr_c, sip);
     NP_ASSERT_STR_EQUAL(daddr_c, uip);
@@ -1544,7 +1561,7 @@ void test_flow_tcp_state_basic()
     NP_ASSERT_EQUAL(size, 1);
 
     /* Outgoing TCP SYN-ACK Packet */
-    p = build_pkt_tcp(test_buffer, ETH_PROTOCOL_IP, IP_PROTOCOL_TCP, FALSE,
+    p = build_pkt_tcp(test_buffer, ETH_PROTOCOL_IP, IP_PROTOCOL_TCP, TRUE,
                       TEST_DPORT, TEST_SPORT, SYN_ACK);
     len = (guint) (p - test_buffer);
     NP_ASSERT_NOT_NULL((flow =
@@ -1564,7 +1581,7 @@ void test_flow_tcp_state_basic()
     NP_ASSERT_EQUAL(state, FLOW_OPEN);
 
     /* Outgoing TCP FIN-ACK Packet */
-    p = build_pkt_tcp(test_buffer, ETH_PROTOCOL_IP, IP_PROTOCOL_TCP, FALSE,
+    p = build_pkt_tcp(test_buffer, ETH_PROTOCOL_IP, IP_PROTOCOL_TCP, TRUE,
                       TEST_DPORT, TEST_SPORT, FIN_ACK);
     len = (guint) (p - test_buffer);
     NP_ASSERT_NOT_NULL((flow =
@@ -1652,7 +1669,7 @@ void test_flow_tcp_state_syn_synack_rst()
     NP_ASSERT_EQUAL(size, 1);
 
     /* Outgoing TCP SYN-ACK Packet */
-    p = build_pkt_tcp(test_buffer, ETH_PROTOCOL_IP, IP_PROTOCOL_TCP, FALSE,
+    p = build_pkt_tcp(test_buffer, ETH_PROTOCOL_IP, IP_PROTOCOL_TCP, TRUE,
                       TEST_DPORT, TEST_SPORT, SYN_ACK);
     len = (guint) (p - test_buffer);
     NP_ASSERT_NOT_NULL((flow =
@@ -1706,7 +1723,7 @@ void test_flow_tcp_state_fin_rst()
     NP_ASSERT_EQUAL(size, 1);
 
     /* Outgoing TCP SYN-ACK Packet */
-    p = build_pkt_tcp(test_buffer, ETH_PROTOCOL_IP, IP_PROTOCOL_TCP, FALSE,
+    p = build_pkt_tcp(test_buffer, ETH_PROTOCOL_IP, IP_PROTOCOL_TCP, TRUE,
                       TEST_DPORT, TEST_SPORT, SYN_ACK);
     len = (guint) (p - test_buffer);
     NP_ASSERT_NOT_NULL((flow =
@@ -1808,7 +1825,7 @@ void test_flow_tcp_state_syn_synack_timeout()
     NP_ASSERT_EQUAL(size, 1);
 
     /* Outgoing TCP SYN-ACK Packet */
-    p = build_pkt_tcp(test_buffer, ETH_PROTOCOL_IP, IP_PROTOCOL_TCP, FALSE,
+    p = build_pkt_tcp(test_buffer, ETH_PROTOCOL_IP, IP_PROTOCOL_TCP, TRUE,
                       TEST_DPORT, TEST_SPORT, SYN_ACK);
     len = (guint) (p - test_buffer);
     /* Set packet timestamp */
@@ -1853,7 +1870,7 @@ void test_flow_tcp_state_fin_timeout()
     NP_ASSERT_EQUAL(size, 1);
 
     /* Outgoing TCP SYN-ACK Packet */
-    p = build_pkt_tcp(test_buffer, ETH_PROTOCOL_IP, IP_PROTOCOL_TCP, FALSE,
+    p = build_pkt_tcp(test_buffer, ETH_PROTOCOL_IP, IP_PROTOCOL_TCP, TRUE,
                       TEST_DPORT, TEST_SPORT, SYN_ACK);
     len = (guint) (p - test_buffer);
     NP_ASSERT_NOT_NULL((flow =
@@ -1929,7 +1946,7 @@ void test_flow_bad_ip_version()
     p = build_hdr_after_ip(p, IP_PROTOCOL_TCP, FALSE);
     guint len = (guint) (p - test_buffer);
 
-    NP_ASSERT_FALSE(flow_parse_ip(&test_flow, test_buffer, len, 0, NULL, NULL));
+    NP_ASSERT_FALSE(flow_parse_ip(test_tuple, test_buffer, len, 0, NULL, NULL, 0, NULL));
 }
 
 void test_flow_parse_ipv4_fragment()
@@ -2061,7 +2078,8 @@ void test_clear_expired_frag_info()
     struct frag_info *non_expired = (g_list_first(table->frag_info_list))->data;
     NP_ASSERT(non_expired->id == 0x3333);
 
-    g_list_free_full(table->frag_info_list, free);
+    /* Do proper clean up */
+    clear_expired_frag_info(table->frag_info_list, now + 1000000);
     g_object_unref(flow1);
     g_object_unref(table);
 }
@@ -2098,4 +2116,75 @@ void test_flow_expiry_queue()
     NP_ASSERT_EQUAL(size, 1);
     g_object_unref(flow2);
     g_object_unref(table);
+}
+
+
+void test_tuple_creation()
+{
+    GInetTuple *tuple = g_object_new(G_INET_TUPLE_TYPE, NULL);
+    NP_ASSERT_NULL(g_inet_tuple_get_src(tuple));
+    NP_ASSERT_NULL(g_inet_tuple_get_dst(tuple));
+    NP_ASSERT_NULL(g_inet_tuple_get_lower(tuple));
+    NP_ASSERT_NULL(g_inet_tuple_get_upper(tuple));
+    g_object_unref(tuple);
+}
+
+void test_tuple_get_addresses()
+{
+    GInetTuple *tuple = g_object_new(G_INET_TUPLE_TYPE, NULL);
+    GInetAddress *src = g_inet_address_new_from_string("192.168.1.1");
+    GInetAddress *dst = g_inet_address_new_from_string("192.168.1.2");
+    g_inet_tuple_set_src_address(tuple, src);
+    g_inet_tuple_set_dst_address(tuple, dst);
+    NP_ASSERT(g_inet_address_equal(src, g_inet_tuple_get_src(tuple)));
+    NP_ASSERT(g_inet_address_equal(dst, g_inet_tuple_get_dst(tuple)));
+    g_object_unref(tuple);
+}
+
+void test_tuple_get_endpoints()
+{
+    GInetTuple *tuple = g_object_new(G_INET_TUPLE_TYPE, NULL);
+    GInetAddress *src = g_inet_address_new_from_string("192.168.1.1");
+    GInetAddress *dst = g_inet_address_new_from_string("192.168.1.2");
+    g_inet_tuple_set_src_address(tuple, src);
+    g_inet_tuple_set_src_port(tuple, 12345);
+    g_inet_tuple_set_dst_address(tuple, dst);
+    g_inet_tuple_set_dst_port(tuple, 80);
+
+    GInetSocketAddress *lower = g_inet_tuple_get_lower(tuple);
+    GInetSocketAddress *upper = g_inet_tuple_get_upper(tuple);
+    GInetSocketAddress *server = g_inet_tuple_get_server(tuple);
+
+    NP_ASSERT(g_inet_socket_address_get_port(lower) == 80);
+    NP_ASSERT(g_inet_socket_address_get_port(upper) == 12345);
+    NP_ASSERT(g_inet_address_equal(g_inet_socket_address_get_address(lower), dst));
+    NP_ASSERT(g_inet_address_equal(g_inet_socket_address_get_address(upper), src));
+    NP_ASSERT(g_inet_socket_address_equal(server, lower));
+    NP_ASSERT(!g_inet_socket_address_equal(server, upper));
+
+    g_object_unref(tuple);
+}
+
+void test_tuple_get_ipv6_endpoints()
+{
+    GInetTuple *tuple = g_object_new(G_INET_TUPLE_TYPE, NULL);
+    GInetAddress *src = g_inet_address_new_from_string("fc00:1::1");
+    GInetAddress *dst = g_inet_address_new_from_string("fc00:1::2");
+    g_inet_tuple_set_src_address(tuple, src);
+    g_inet_tuple_set_src_port(tuple, 12345);
+    g_inet_tuple_set_dst_address(tuple, dst);
+    g_inet_tuple_set_dst_port(tuple, 80);
+
+    GInetSocketAddress *lower = g_inet_tuple_get_lower(tuple);
+    GInetSocketAddress *upper = g_inet_tuple_get_upper(tuple);
+    GInetSocketAddress *server = g_inet_tuple_get_server(tuple);
+
+    NP_ASSERT(g_inet_socket_address_get_port(lower) == 80);
+    NP_ASSERT(g_inet_socket_address_get_port(upper) == 12345);
+    NP_ASSERT(g_inet_address_equal(g_inet_socket_address_get_address(lower), dst));
+    NP_ASSERT(g_inet_address_equal(g_inet_socket_address_get_address(upper), src));
+    NP_ASSERT(g_inet_socket_address_equal(server, lower));
+    NP_ASSERT(!g_inet_socket_address_equal(server, upper));
+
+    g_object_unref(tuple);
 }
