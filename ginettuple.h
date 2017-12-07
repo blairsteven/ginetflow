@@ -44,7 +44,7 @@ GInetSocketAddress *g_inet_tuple_get_server(GInetTuple * tuple);
 GInetSocketAddress *g_inet_tuple_get_client(GInetTuple * tuple);
 guint16 g_inet_tuple_get_protocol(GInetTuple * tuple);
 gboolean g_inet_tuple_equal(GInetTuple * a, GInetTuple * b);
-guint g_inet_tuple_hash (GInetTuple *t);
+guint g_inet_tuple_hash(GInetTuple * t);
 
 
 G_END_DECLS
