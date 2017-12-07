@@ -189,6 +189,49 @@ gboolean g_inet_tuple_equal(GInetTuple * a, GInetTuple * b)
     return equal;
 }
 
+static inline guint16 crc16(guint16 iv, guint64 p)
+{
+    int i;
+    int j;
+    guint32 b;
+    guint16 poly = 0x1021;
+    for (i = 7; i >= 0; i--) {
+        b = (p >> (i * 8)) & 0xff;
+        for (j = 7; j >= 0; j--) {
+            iv = ((iv << 1) ^ ((((iv >> 15) & 1) ^ ((b >> j) & 1)) ? poly : 0)) & 0xffff;
+        }
+    }
+    return iv;
+}
+
+guint g_inet_tuple_hash(GInetTuple * tuple)
+{
+    guint hash = 0;
+
+    guint16 src_crc = 0xffff;
+    guint16 dst_crc = 0xffff;
+    guint16 prot_crc = 0xffff;
+
+    GInetSocketAddress *lower = g_inet_tuple_get_lower(tuple);
+    GInetSocketAddress *upper = g_inet_tuple_get_upper(tuple);
+
+    guint32 *lower_ip =
+        (guint32 *) g_inet_address_to_bytes(g_inet_socket_address_get_address(lower));
+    guint32 *upper_ip =
+        (guint32 *) g_inet_address_to_bytes(g_inet_socket_address_get_address(upper));
+
+    src_crc = crc16(src_crc, ((guint64) lower_ip[0]) << 32 | lower_ip[1]);
+    src_crc = crc16(src_crc, ((guint64) lower_ip[2]) << 32 | lower_ip[3]);
+    src_crc = crc16(src_crc, ((guint64) g_inet_socket_address_get_port(lower)) << 48);
+    dst_crc = crc16(dst_crc, ((guint64) upper_ip[0]) << 32 | upper_ip[1]);
+    dst_crc = crc16(dst_crc, ((guint64) upper_ip[2]) << 32 | upper_ip[3]);
+    dst_crc = crc16(dst_crc, ((guint64) g_inet_socket_address_get_port(upper)) << 48);
+
+    prot_crc = crc16(prot_crc, ((guint64) g_inet_tuple_get_protocol(tuple)) << 56);
+    hash = (src_crc ^ dst_crc ^ prot_crc);
+    return hash;
+}
+
 static void g_inet_tuple_init(GInetTuple * tuple)
 {
     tuple->src = NULL;
