@@ -17,84 +17,31 @@
  */
 
 #include "ginettuple.h"
-
-/** GInetTuple */
-struct _GInetTuple {
-    GObject parent;
-    GInetAddress *src;
-    guint16 sport;
-    GInetAddress *dst;
-    guint16 dport;
-    guint16 protocol;
-
-    /* Internal use only */
-    GInetSocketAddress *lower;
-    GInetSocketAddress *upper;
-};
-
-struct _GInetTupleClass {
-    GObjectClass parent;
-};
-G_DEFINE_TYPE(GInetTuple, g_inet_tuple, G_TYPE_OBJECT);
+#include <string.h>
 
 void clear_cached(GInetTuple * tuple)
 {
-    if (tuple->lower) {
-        g_object_unref(tuple->lower);
-        tuple->lower = NULL;
-    }
-    if (tuple->upper) {
-        g_object_unref(tuple->upper);
-        tuple->upper = NULL;
-    }
-}
-
-GInetAddress *g_inet_tuple_get_src(GInetTuple * tuple)
-{
-    return tuple->src;
-}
-
-GInetAddress *g_inet_tuple_get_dst(GInetTuple * tuple)
-{
-    return tuple->dst;
-}
-
-void g_inet_tuple_set_src_address(GInetTuple * tuple, GInetAddress * src)
-{
-    if (tuple->src)
-        g_object_unref((GObject *) tuple->src);
-    clear_cached(tuple);
-    tuple->src = src;
-}
-
-void g_inet_tuple_set_src_port(GInetTuple * tuple, guint16 port)
-{
-    tuple->sport = port;
-    clear_cached(tuple);
+    tuple->hash = 0;
 }
 
 guint16 g_inet_tuple_get_src_port(GInetTuple * tuple)
 {
-    return tuple->sport;
-}
-
-void g_inet_tuple_set_dst_address(GInetTuple * tuple, GInetAddress * dst)
-{
-    if (tuple->dst)
-        g_object_unref((GObject *) tuple->dst);
-    clear_cached(tuple);
-    tuple->dst = dst;
-}
-
-void g_inet_tuple_set_dst_port(GInetTuple * tuple, guint16 port)
-{
-    tuple->dport = port;
-    clear_cached(tuple);
+    return ((struct sockaddr_in *) &tuple->src)->sin_port;
 }
 
 guint16 g_inet_tuple_get_dst_port(GInetTuple * tuple)
 {
-    return tuple->dport;
+    return ((struct sockaddr_in *) &tuple->dst)->sin_port;
+}
+
+struct sockaddr_storage *g_inet_tuple_get_src(GInetTuple * tuple)
+{
+    return &tuple->src;
+}
+
+struct sockaddr_storage *g_inet_tuple_get_dst(GInetTuple * tuple)
+{
+    return &tuple->dst;
 }
 
 void g_inet_tuple_set_protocol(GInetTuple * tuple, guint16 protocol)
@@ -102,50 +49,30 @@ void g_inet_tuple_set_protocol(GInetTuple * tuple, guint16 protocol)
     tuple->protocol = protocol;
 }
 
-GInetSocketAddress *g_inet_tuple_get_lower(GInetTuple * tuple)
+struct sockaddr_storage *g_inet_tuple_get_lower(GInetTuple * tuple)
 {
-    GInetAddress *src = g_inet_tuple_get_src(tuple);
-    GInetAddress *dst = g_inet_tuple_get_dst(tuple);
-
-    if (!src || !dst)
-        return NULL;
-
-    if (tuple->lower)
-        return tuple->lower;
-
-    if (tuple->sport > tuple->dport) {
-        tuple->lower = (GInetSocketAddress *) g_inet_socket_address_new(dst, tuple->dport);
-    } else {
-        tuple->lower = (GInetSocketAddress *) g_inet_socket_address_new(src, tuple->sport);
-    }
-    return tuple->lower;
+    if (((struct sockaddr_in *) &tuple->src)->sin_port <
+        ((struct sockaddr_in *) &tuple->dst)->sin_port)
+        return &tuple->src;
+    else
+        return &tuple->dst;
 }
 
-GInetSocketAddress *g_inet_tuple_get_upper(GInetTuple * tuple)
+struct sockaddr_storage *g_inet_tuple_get_upper(GInetTuple * tuple)
 {
-    GInetAddress *src = g_inet_tuple_get_src(tuple);
-    GInetAddress *dst = g_inet_tuple_get_dst(tuple);
-
-    if (!src || !dst)
-        return NULL;
-
-    if (tuple->upper)
-        return tuple->upper;
-
-    if (tuple->sport <= tuple->dport) {
-        tuple->upper = (GInetSocketAddress *) g_inet_socket_address_new(dst, tuple->dport);
-    } else {
-        tuple->upper = (GInetSocketAddress *) g_inet_socket_address_new(src, tuple->sport);
-    }
-    return tuple->upper;
+    if (((struct sockaddr_in *) &tuple->src)->sin_port >=
+        ((struct sockaddr_in *) &tuple->dst)->sin_port)
+        return &tuple->src;
+    else
+        return &tuple->dst;
 }
 
-GInetSocketAddress *g_inet_tuple_get_server(GInetTuple * tuple)
+struct sockaddr_storage *g_inet_tuple_get_server(GInetTuple * tuple)
 {
     return g_inet_tuple_get_lower(tuple);
 }
 
-GInetSocketAddress *g_inet_tuple_get_client(GInetTuple * tuple)
+struct sockaddr_storage *g_inet_tuple_get_client(GInetTuple * tuple)
 {
     return g_inet_tuple_get_upper(tuple);
 }
@@ -155,118 +82,55 @@ guint16 g_inet_tuple_get_protocol(GInetTuple * tuple)
     return tuple->protocol;
 }
 
-/* This function is a candidate for going upstream into GInetSocketAddress */
-gboolean g_inet_socket_address_equal(GInetSocketAddress * a, GInetSocketAddress * b)
+static int sock_address_comparison(struct sockaddr_storage *a, struct sockaddr_storage *b)
 {
-    if (!a && b) {
-        return FALSE;
+    if (((struct sockaddr_in *) a)->sin_family != ((struct sockaddr_in *) a)->sin_family) {
+        return 1;
     }
-    if (a && !b) {
-        return FALSE;
+
+    if (((struct sockaddr_in *) a)->sin_family == AF_INET) {
+        struct sockaddr_in *a_v4 = (struct sockaddr_in *) a;
+        struct sockaddr_in *b_v4 = (struct sockaddr_in *) b;
+        return memcmp(&a_v4->sin_addr, &b_v4->sin_addr, sizeof(a_v4->sin_addr));
+    } else {
+        struct sockaddr_in6 *a_v6 = (struct sockaddr_in6 *) a;
+        struct sockaddr_in6 *b_v6 = (struct sockaddr_in6 *) b;
+        return memcmp(&a_v6->sin6_addr, &b_v6->sin6_addr, sizeof(a_v6->sin6_addr));
     }
-    if (g_inet_socket_address_get_port(a) != g_inet_socket_address_get_port(b)) {
-        return FALSE;
-    }
-    if (!g_inet_address_equal
-        (g_inet_socket_address_get_address(a), g_inet_socket_address_get_address(b))) {
-        return FALSE;
-    }
-    return TRUE;
 }
 
 gboolean g_inet_tuple_equal(GInetTuple * a, GInetTuple * b)
 {
-    GInetSocketAddress *lower_a = g_inet_tuple_get_lower(a);
-    GInetSocketAddress *upper_a = g_inet_tuple_get_upper(a);
-    GInetSocketAddress *lower_b = g_inet_tuple_get_lower(b);
-    GInetSocketAddress *upper_b = g_inet_tuple_get_upper(b);
-    gboolean equal = FALSE;
-
-    if (!lower_a || !upper_a || !lower_b || !upper_b) {
-        goto exit;
-    }
     if (a->protocol != b->protocol) {
-        goto exit;
+        return FALSE;
     }
-    if (!g_inet_socket_address_equal(lower_a, lower_b)) {
-        goto exit;
-    }
-    if (!g_inet_socket_address_equal(upper_a, upper_b)) {
-        goto exit;
-    }
-    equal = TRUE;
-  exit:
-    return equal;
-}
 
-static inline guint16 crc16(guint16 iv, guint64 p)
-{
-    int i;
-    int j;
-    guint32 b;
-    guint16 poly = 0x1021;
-    for (i = 7; i >= 0; i--) {
-        b = (p >> (i * 8)) & 0xff;
-        for (j = 7; j >= 0; j--) {
-            iv = ((iv << 1) ^ ((((iv >> 15) & 1) ^ ((b >> j) & 1)) ? poly : 0)) & 0xffff;
-        }
+    struct sockaddr_storage *lower_a = g_inet_tuple_get_lower(a);
+    struct sockaddr_storage *upper_a = g_inet_tuple_get_upper(a);
+    struct sockaddr_storage *lower_b = g_inet_tuple_get_lower(b);
+    struct sockaddr_storage *upper_b = g_inet_tuple_get_upper(b);
+
+    if (sock_address_comparison(lower_a, lower_b)) {
+        return FALSE;
     }
-    return iv;
+    if (sock_address_comparison(upper_a, upper_b)) {
+        return FALSE;
+    }
+
+    return TRUE;
 }
 
 guint g_inet_tuple_hash(GInetTuple * tuple)
 {
-    guint hash = 0;
+    if (tuple->hash)
+        return tuple->hash;
 
-    guint16 src_crc = 0xffff;
-    guint16 dst_crc = 0xffff;
-    guint16 prot_crc = 0xffff;
+    struct sockaddr_storage *lower = g_inet_tuple_get_lower(tuple);
+    struct sockaddr_storage *upper = g_inet_tuple_get_upper(tuple);
 
-    GInetSocketAddress *lower = g_inet_tuple_get_lower(tuple);
-    GInetSocketAddress *upper = g_inet_tuple_get_upper(tuple);
+    tuple->hash =
+        ((struct sockaddr_in *) lower)->
+        sin_port << 16 | ((struct sockaddr_in *) upper)->sin_port;
 
-    guint32 *lower_ip =
-        (guint32 *) g_inet_address_to_bytes(g_inet_socket_address_get_address(lower));
-    guint32 *upper_ip =
-        (guint32 *) g_inet_address_to_bytes(g_inet_socket_address_get_address(upper));
-
-    src_crc = crc16(src_crc, ((guint64) lower_ip[0]) << 32 | lower_ip[1]);
-    src_crc = crc16(src_crc, ((guint64) lower_ip[2]) << 32 | lower_ip[3]);
-    src_crc = crc16(src_crc, ((guint64) g_inet_socket_address_get_port(lower)) << 48);
-    dst_crc = crc16(dst_crc, ((guint64) upper_ip[0]) << 32 | upper_ip[1]);
-    dst_crc = crc16(dst_crc, ((guint64) upper_ip[2]) << 32 | upper_ip[3]);
-    dst_crc = crc16(dst_crc, ((guint64) g_inet_socket_address_get_port(upper)) << 48);
-
-    prot_crc = crc16(prot_crc, ((guint64) g_inet_tuple_get_protocol(tuple)) << 56);
-    hash = (src_crc ^ dst_crc ^ prot_crc);
-    return hash;
-}
-
-static void g_inet_tuple_init(GInetTuple * tuple)
-{
-    tuple->src = NULL;
-    tuple->dst = NULL;
-    tuple->upper = NULL;
-    tuple->lower = NULL;
-    return;
-}
-
-static void g_inet_tuple_dispose(GObject * gobject)
-{
-    GInetTuple *tuple = (GInetTuple *) gobject;
-    if (tuple->src)
-        g_object_unref(tuple->src);
-    if (tuple->dst)
-        g_object_unref(tuple->dst);
-    if (tuple->lower)
-        g_object_unref(tuple->lower);
-    if (tuple->upper)
-        g_object_unref(tuple->upper);
-}
-
-static void g_inet_tuple_class_init(GInetTupleClass * class)
-{
-    GObjectClass *object_class = G_OBJECT_CLASS(class);
-    object_class->dispose = g_inet_tuple_dispose;
-    return;
+    return tuple->hash;
 }
