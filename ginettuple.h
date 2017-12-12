@@ -33,10 +33,12 @@ GInetAddress *g_inet_tuple_get_src(GInetTuple * tuple);
 /* g_inet_tuple_set_src_address owns src after this call */
 void g_inet_tuple_set_src_address(GInetTuple * tuple, GInetAddress * src);
 void g_inet_tuple_set_src_port(GInetTuple * tuple, guint16 port);
+guint16 g_inet_tuple_get_src_port(GInetTuple * tuple);
 GInetAddress *g_inet_tuple_get_dst(GInetTuple * tuple);
 /* g_inet_tuple_set_dst_address owns dst after this call */
 void g_inet_tuple_set_dst_address(GInetTuple * tuple, GInetAddress * dst);
 void g_inet_tuple_set_dst_port(GInetTuple * tuple, guint16 port);
+guint16 g_inet_tuple_get_dst_port(GInetTuple * tuple);
 void g_inet_tuple_set_protocol(GInetTuple * tuple, guint16 protocol);
 GInetSocketAddress *g_inet_tuple_get_lower(GInetTuple * tuple);
 GInetSocketAddress *g_inet_tuple_get_upper(GInetTuple * tuple);

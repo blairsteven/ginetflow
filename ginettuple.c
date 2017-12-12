@@ -73,6 +73,11 @@ void g_inet_tuple_set_src_port(GInetTuple * tuple, guint16 port)
     clear_cached(tuple);
 }
 
+guint16 g_inet_tuple_get_src_port(GInetTuple * tuple)
+{
+    return tuple->sport;
+}
+
 void g_inet_tuple_set_dst_address(GInetTuple * tuple, GInetAddress * dst)
 {
     if (tuple->dst)
@@ -85,6 +90,11 @@ void g_inet_tuple_set_dst_port(GInetTuple * tuple, guint16 port)
 {
     tuple->dport = port;
     clear_cached(tuple);
+}
+
+guint16 g_inet_tuple_get_dst_port(GInetTuple * tuple)
+{
+    return tuple->dport;
 }
 
 void g_inet_tuple_set_protocol(GInetTuple * tuple, guint16 protocol)
