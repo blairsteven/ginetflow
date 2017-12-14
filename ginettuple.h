@@ -34,11 +34,12 @@ typedef struct _GInetTuple {
 } GInetTuple;
 
 guint16 g_inet_tuple_get_src_port(GInetTuple * tuple);
+guint16 g_inet_tuple_get_dst_port(GInetTuple * tuple);
+struct sockaddr_storage *g_inet_tuple_get_src(GInetTuple * tuple);
 struct sockaddr_storage *g_inet_tuple_get_dst(GInetTuple * tuple);
 struct sockaddr_storage *g_inet_tuple_get_lower(GInetTuple * tuple);
 struct sockaddr_storage *g_inet_tuple_get_upper(GInetTuple * tuple);
 struct sockaddr_storage *g_inet_tuple_get_server(GInetTuple * tuple);
-guint16 g_inet_tuple_get_dst_port(GInetTuple * tuple);
 void g_inet_tuple_set_protocol(GInetTuple * tuple, guint16 protocol);
 guint16 g_inet_tuple_get_protocol(GInetTuple * tuple);
 gboolean g_inet_tuple_equal(GInetTuple * a, GInetTuple * b);
