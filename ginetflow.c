@@ -1049,6 +1049,30 @@ GInetFlow *g_inet_flow_get_full(GInetFlowTable * table,
     return flow;
 }
 
+GInetFlow *g_inet_flow_create(GInetFlowTable * table, GInetTuple *tuple)
+{
+    GInetFlow *flow;
+
+    /* Check if max table size is reached */
+    if (table->max > 0 && g_hash_table_size(table->table) >= table->max) {
+        return NULL;
+    }
+
+    flow = (GInetFlow *) g_object_new(G_INET_TYPE_FLOW, NULL);
+    flow->table = table;
+    flow->list.data = flow;
+    /* Set default lifetime before processing further */
+    flow->lifetime = G_INET_FLOW_DEFAULT_NEW_TIMEOUT;
+    flow->family = ((struct sockaddr *) &(tuple->src))->sa_family;
+    flow->hash = g_inet_tuple_hash(tuple);
+    flow->tuple = *tuple;
+    g_hash_table_replace(table->table, (gpointer) flow, (gpointer) flow);
+    flow->timestamp = get_time_us();
+    insert_flow_by_expiry(table, flow, flow->lifetime);
+
+    return flow;
+}
+
 static void g_inet_flow_table_finalize(GObject * object)
 {
     int i;
@@ -1151,4 +1175,12 @@ GInetTuple *g_inet_flow_parse(const guint8 * frame, guint length, GList ** fragm
         result = calloc(1, sizeof(GInetTuple));
     flow_parse(result, frame, length, 0, fragments, NULL, 0, NULL);
     return result;
+}
+
+GInetFlow *g_inet_flow_lookup (GInetFlowTable * table, GInetTuple *tuple)
+{
+    GInetFlow packet;
+
+    packet.tuple = *tuple;
+    return (GInetFlow *) g_hash_table_lookup(table->table, &packet);
 }
