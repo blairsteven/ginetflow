@@ -499,7 +499,8 @@ static gboolean flow_parse_ipv4(GInetTuple * f, const guint8 * data, guint32 len
     }
 
     /* Store ID and tuple if the packet is a first IP fragment (MF set and frag_off is zero) */
-    if (((GUINT16_FROM_BE(iph->frag_off) & 0x2000) != 0) &&
+    if (fragments &&
+        ((GUINT16_FROM_BE(iph->frag_off) & 0x2000) != 0) &&
         ((GUINT16_FROM_BE(iph->frag_off) & 0x1FFF) == 0)) {
         return store_frag_info(fragments, f, ts, iph->id);
     }
@@ -634,7 +635,7 @@ static gboolean flow_parse_ipv6(GInetTuple * f, const guint8 * data, guint32 len
     }
 
     /* Store ID and tuple if the packet is a first IP fragment (MF set and frag_off is zero) */
-    if (fragment_hdr &&
+    if (fragments && fragment_hdr &&
         ((GUINT16_FROM_BE(fragment_hdr->fo_res_mflag) & 0x1) != 0) &&
         ((GUINT16_FROM_BE(fragment_hdr->fo_res_mflag) & 0xFFF8) == 0)) {
         return store_frag_info(fragments, f, ts, fragment_hdr->id);
