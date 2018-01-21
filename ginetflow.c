@@ -224,10 +224,10 @@ typedef struct ipv6_partial_ext_hdr_t {
 
 static gboolean flow_parse_ipv4(GInetTuple * f, const guint8 * data, guint32 length,
                                 GList ** fragments, const uint8_t ** iphr, guint64 ts,
-                                guint16 * flags);
+                                guint16 * flags, gboolean tunnel);
 static gboolean flow_parse_ipv6(GInetTuple * f, const guint8 * data, guint32 length,
                                 GList ** fragments, const uint8_t ** iphr, guint64 ts,
-                                guint16 * flags);
+                                guint16 * flags, gboolean tunnel);
 
 static inline guint64 get_time_us(void)
 {
@@ -412,12 +412,12 @@ static gboolean flow_parse_gre(GInetTuple * f, const guint8 * data, guint32 leng
     switch (proto) {
     case ETH_PROTOCOL_IP:
         if (!flow_parse_ipv4
-            (f, data + offset, length - offset, fragments, iphr, ts, tcp_flags))
+            (f, data + offset, length - offset, fragments, iphr, ts, tcp_flags, TRUE))
             return FALSE;
         break;
     case ETH_PROTOCOL_IPV6:
         if (!flow_parse_ipv6
-            (f, data + offset, length - offset, fragments, iphr, ts, tcp_flags))
+            (f, data + offset, length - offset, fragments, iphr, ts, tcp_flags, TRUE))
             return FALSE;
         break;
     default:
@@ -428,7 +428,7 @@ static gboolean flow_parse_gre(GInetTuple * f, const guint8 * data, guint32 leng
 
 static gboolean flow_parse_ipv4(GInetTuple * f, const guint8 * data, guint32 length,
                                 GList ** fragments, const uint8_t ** iphr, guint64 ts,
-                                guint16 * tcp_flags)
+                                guint16 * tcp_flags, gboolean tunnel)
 {
     ip_hdr_t *iph = (ip_hdr_t *) data;
     if (length < sizeof(ip_hdr_t))
@@ -445,6 +445,7 @@ static gboolean flow_parse_ipv4(GInetTuple * f, const guint8 * data, guint32 len
     memcpy(&((struct sockaddr_in *) &f->dst)->sin_addr, (char *) &iph->daddr,
            sizeof(((struct sockaddr_in *) & f->dst)->sin_addr));
 
+    DEBUG("Protocol: %d\n", iph->protocol);
     g_inet_tuple_set_protocol(f, iph->protocol);
 
     /* Non-first IP fragments (frag_offset is non-zero) will need a look-up
@@ -488,8 +489,9 @@ static gboolean flow_parse_ipv4(GInetTuple * f, const guint8 * data, guint32 len
             return FALSE;
         break;
     case IP_PROTOCOL_GRE:
-        flow_parse_gre(f, data + sizeof(ip_hdr_t), length - sizeof(ip_hdr_t), fragments,
-                       iphr, ts, tcp_flags);
+        if (tunnel)
+            flow_parse_gre(f, data + sizeof(ip_hdr_t), length - sizeof(ip_hdr_t),
+                           fragments, iphr, ts, tcp_flags);
         break;
     case IP_PROTOCOL_ICMP:
     default:
@@ -510,7 +512,7 @@ static gboolean flow_parse_ipv4(GInetTuple * f, const guint8 * data, guint32 len
 
 static gboolean flow_parse_ipv6(GInetTuple * f, const guint8 * data, guint32 length,
                                 GList ** fragments, const uint8_t ** iphr, guint64 ts,
-                                guint16 * tcp_flags)
+                                guint16 * tcp_flags, gboolean tunnel)
 {
     ip6_hdr_t *iph = (ip6_hdr_t *) data;
     frag_hdr_t *fragment_hdr = NULL;
@@ -552,17 +554,18 @@ static gboolean flow_parse_ipv6(GInetTuple * f, const guint8 * data, guint32 len
         }
         break;
     case IP_PROTOCOL_IPV4:
-        if (!flow_parse_ipv4(f, data, length, fragments, iphr, ts, tcp_flags)) {
+        if (!flow_parse_ipv4(f, data, length, fragments, iphr, ts, tcp_flags, tunnel)) {
             return FALSE;
         }
         break;
     case IP_PROTOCOL_IPV6:
-        if (!flow_parse_ipv6(f, data, length, fragments, iphr, ts, tcp_flags)) {
+        if (!flow_parse_ipv6(f, data, length, fragments, iphr, ts, tcp_flags, tunnel)) {
             return FALSE;
         }
         break;
     case IP_PROTOCOL_GRE:
-        flow_parse_gre(f, data, length, fragments, iphr, ts, tcp_flags);
+        if (tunnel)
+            flow_parse_gre(f, data, length, fragments, iphr, ts, tcp_flags);
         break;
     case IP_PROTOCOL_HBH_OPT:
     case IP_PROTOCOL_DEST_OPT:
@@ -646,7 +649,7 @@ static gboolean flow_parse_ipv6(GInetTuple * f, const guint8 * data, guint32 len
 
 static gboolean flow_parse_ip(GInetTuple * f, const guint8 * data, guint32 length,
                               guint16 hash, GList ** fragments, const uint8_t ** iphr,
-                              guint64 ts, guint16 * flags)
+                              guint64 ts, guint16 * flags, gboolean tunnel)
 {
     guint8 version;
 
@@ -657,20 +660,21 @@ static gboolean flow_parse_ip(GInetTuple * f, const guint8 * data, guint32 lengt
     version = 0x0f & (version >> 4);
 
     if (version == 4) {
-        if (!flow_parse_ipv4(f, data, length, fragments, iphr, ts, flags))
+        if (!flow_parse_ipv4(f, data, length, fragments, iphr, ts, flags, tunnel))
             return FALSE;
     } else if (version == 6) {
-        if (!flow_parse_ipv6(f, data, length, fragments, iphr, ts, flags))
+        if (!flow_parse_ipv6(f, data, length, fragments, iphr, ts, flags, tunnel))
             return FALSE;
     } else {
         DEBUG("Unsupported ip version: %d\n", version);
         return FALSE;
     }
+    return TRUE;
 }
 
 static gboolean flow_parse(GInetTuple * f, const guint8 * data, guint32 length,
                            guint16 hash, GList ** fragments, const uint8_t ** iphr,
-                           guint64 ts, guint16 * flags)
+                           guint64 ts, guint16 * flags, gboolean tunnel)
 {
     ethernet_hdr_t *e;
     vlan_hdr_t *v;
@@ -725,7 +729,7 @@ static gboolean flow_parse(GInetTuple * f, const guint8 * data, guint32 length,
         goto try_again;
     case ETH_PROTOCOL_IP:
     case ETH_PROTOCOL_IPV6:
-        if (!flow_parse_ip(f, data, length, hash, fragments, iphr, ts, flags))
+        if (!flow_parse_ip(f, data, length, hash, fragments, iphr, ts, flags, tunnel))
             return FALSE;
         break;
     case ETH_PROTOCOL_PPPOE_SESS:
@@ -984,13 +988,13 @@ GInetFlow *g_inet_flow_expire(GInetFlowTable * table, guint64 ts)
 
 GInetFlow *g_inet_flow_get(GInetFlowTable * table, const guint8 * frame, guint length)
 {
-    return g_inet_flow_get_full(table, frame, length, 0, 0, FALSE, TRUE, NULL);
+    return g_inet_flow_get_full(table, frame, length, 0, 0, FALSE, TRUE, FALSE, NULL);
 }
 
 GInetFlow *g_inet_flow_get_full(GInetFlowTable * table,
                                 const guint8 * frame, guint length,
                                 guint16 hash, guint64 timestamp, gboolean update,
-                                gboolean l2, const uint8_t ** iphr)
+                                gboolean l2, gboolean inspect_tunnel, const uint8_t ** iphr)
 {
     GInetFlow packet = {.timestamp = timestamp };
     GInetTuple tuple = { 0 };
@@ -999,13 +1003,13 @@ GInetFlow *g_inet_flow_get_full(GInetFlowTable * table,
     if (l2) {
         if (!flow_parse
             (&tuple, frame, length, hash, &table->frag_info_list, iphr, timestamp,
-             &packet.flags)) {
+             &packet.flags, inspect_tunnel)) {
             goto exit;
         }
     } else
         if (!flow_parse_ip
             (&tuple, frame, length, hash, &table->frag_info_list, iphr, timestamp,
-             &packet.flags)) {
+             &packet.flags, inspect_tunnel)) {
         goto exit;
     }
 
@@ -1050,7 +1054,7 @@ GInetFlow *g_inet_flow_get_full(GInetFlowTable * table,
     return flow;
 }
 
-GInetFlow *g_inet_flow_create(GInetFlowTable * table, GInetTuple *tuple)
+GInetFlow *g_inet_flow_create(GInetFlowTable * table, GInetTuple * tuple)
 {
     GInetFlow *flow;
 
@@ -1170,15 +1174,15 @@ void g_inet_flow_foreach(GInetFlowTable * table, GIFFunc func, gpointer user_dat
 }
 
 GInetTuple *g_inet_flow_parse(const guint8 * frame, guint length, GList ** fragments,
-                              GInetTuple * result)
+                              GInetTuple * result, gboolean inspect_tunnel)
 {
     if (!result)
         result = calloc(1, sizeof(GInetTuple));
-    flow_parse(result, frame, length, 0, fragments, NULL, 0, NULL);
+    flow_parse(result, frame, length, 0, fragments, NULL, 0, NULL, inspect_tunnel);
     return result;
 }
 
-GInetFlow *g_inet_flow_lookup (GInetFlowTable * table, GInetTuple *tuple)
+GInetFlow *g_inet_flow_lookup(GInetFlowTable * table, GInetTuple * tuple)
 {
     GInetFlow packet;
 
