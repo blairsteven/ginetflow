@@ -1076,11 +1076,9 @@ void test_flow_properties()
     guint lport;
     guint uport;
     guint server_port;
-    gchar *lip;
-    gchar *uip;
-    gchar *sip;
-    gchar *saddr_c = NULL;
-    gchar *daddr_c = NULL;
+    struct sockaddr_storage *lip;
+    struct sockaddr_storage *uip;
+    struct sockaddr_storage *sip;
 
 
     setup_test();
@@ -1113,17 +1111,11 @@ void test_flow_properties()
     NP_ASSERT_NOT_NULL(lip);
     NP_ASSERT_NOT_NULL(uip);
     NP_ASSERT_NOT_NULL(sip);
-    saddr_c = num_to_string((gchar *) & saddr, G_SOCKET_FAMILY_IPV4);
-    daddr_c = num_to_string((gchar *) & daddr, G_SOCKET_FAMILY_IPV4);
-    NP_ASSERT_STR_EQUAL(saddr_c, lip);
-    NP_ASSERT_STR_EQUAL(saddr_c, sip);
-    NP_ASSERT_STR_EQUAL(daddr_c, uip);
 
-    g_free(saddr_c);
-    g_free(daddr_c);
-    g_free(lip);
-    g_free(sip);
-    g_free(uip);
+    NP_ASSERT(((struct sockaddr_in *) lip)->sin_addr.s_addr == htonl(TEST_SADDR));
+    NP_ASSERT(((struct sockaddr_in *) sip)->sin_addr.s_addr == htonl(TEST_SADDR));
+    NP_ASSERT(((struct sockaddr_in *) uip)->sin_addr.s_addr == htonl(TEST_DADDR));
+
     g_object_unref(flow);
     g_object_unref(table);
 }
@@ -1180,17 +1172,11 @@ void test_flow_properties_reversed()
     NP_ASSERT_NOT_NULL(lip);
     NP_ASSERT_NOT_NULL(uip);
     NP_ASSERT_NOT_NULL(sip);
-    saddr_c = num_to_string((gchar *) & saddr, G_SOCKET_FAMILY_IPV4);
-    daddr_c = num_to_string((gchar *) & daddr, G_SOCKET_FAMILY_IPV4);
-    NP_ASSERT_STR_EQUAL(saddr_c, lip);
-    NP_ASSERT_STR_EQUAL(saddr_c, sip);
-    NP_ASSERT_STR_EQUAL(daddr_c, uip);
 
-    g_free(saddr_c);
-    g_free(daddr_c);
-    g_free(lip);
-    g_free(sip);
-    g_free(uip);
+    NP_ASSERT(((struct sockaddr_in *) lip)->sin_addr.s_addr == htonl(TEST_SADDR));
+    NP_ASSERT(((struct sockaddr_in *) sip)->sin_addr.s_addr == htonl(TEST_SADDR));
+    NP_ASSERT(((struct sockaddr_in *) uip)->sin_addr.s_addr == htonl(TEST_DADDR));
+
     g_object_unref(flow);
     g_object_unref(table);
 }
@@ -1243,17 +1229,17 @@ void test_flow_properties_ipv6()
     NP_ASSERT_NOT_NULL(lip);
     NP_ASSERT_NOT_NULL(uip);
     NP_ASSERT_NOT_NULL(sip);
-    saddr_c = num_to_string(test_ip6src, G_SOCKET_FAMILY_IPV6);
-    daddr_c = num_to_string(test_ip6dst, G_SOCKET_FAMILY_IPV6);
-    NP_ASSERT_STR_EQUAL(saddr_c, lip);
-    NP_ASSERT_STR_EQUAL(daddr_c, uip);
-    NP_ASSERT_STR_EQUAL(saddr_c, sip);
 
-    g_free(saddr_c);
-    g_free(daddr_c);
-    g_free(lip);
-    g_free(sip);
-    g_free(uip);
+    NP_ASSERT(memcmp
+              (&((struct sockaddr_in6 *) lip)->sin6_addr, test_ip6src,
+               sizeof(test_ip6src)) == 0);
+    NP_ASSERT(memcmp
+              (&((struct sockaddr_in6 *) sip)->sin6_addr, test_ip6src,
+               sizeof(test_ip6src)) == 0);
+    NP_ASSERT(memcmp
+              (&((struct sockaddr_in6 *) uip)->sin6_addr, test_ip6dst,
+               sizeof(test_ip6dst)) == 0);
+
     g_object_unref(flow);
     g_object_unref(table);
 }
@@ -1307,17 +1293,17 @@ void test_flow_properties_ipv6_reversed()
     NP_ASSERT_NOT_NULL(lip);
     NP_ASSERT_NOT_NULL(uip);
     NP_ASSERT_NOT_NULL(sip);
-    saddr_c = num_to_string(test_ip6src, G_SOCKET_FAMILY_IPV6);
-    daddr_c = num_to_string(test_ip6dst, G_SOCKET_FAMILY_IPV6);
-    NP_ASSERT_STR_EQUAL(saddr_c, lip);
-    NP_ASSERT_STR_EQUAL(daddr_c, uip);
-    NP_ASSERT_STR_EQUAL(saddr_c, sip);
 
-    g_free(saddr_c);
-    g_free(daddr_c);
-    g_free(lip);
-    g_free(sip);
-    g_free(uip);
+    NP_ASSERT(memcmp
+              (&((struct sockaddr_in6 *) lip)->sin6_addr, test_ip6src,
+               sizeof(test_ip6src)) == 0);
+    NP_ASSERT(memcmp
+              (&((struct sockaddr_in6 *) sip)->sin6_addr, test_ip6src,
+               sizeof(test_ip6src)) == 0);
+    NP_ASSERT(memcmp
+              (&((struct sockaddr_in6 *) uip)->sin6_addr, test_ip6dst,
+               sizeof(test_ip6dst)) == 0);
+
     g_object_unref(flow);
     g_object_unref(table);
 }
@@ -1360,14 +1346,12 @@ void test_flow_table_properties()
 void flow_print_protocol(GInetFlow * flow)
 {
     guint protocol;
-    gchar *lip;
+    struct sockaddr_storage *lip;
 
     NP_ASSERT_NOT_NULL(flow);
     g_object_get(flow, "protocol", &protocol, "lip", &lip, NULL);
     NP_ASSERT((protocol == IP_PROTOCOL_TCP) || (protocol == IP_PROTOCOL_UDP));
     NP_ASSERT_NOT_NULL(lip);
-
-    g_free(lip);
 }
 
 void test_flow_foreach()

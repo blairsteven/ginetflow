@@ -707,29 +707,16 @@ static void g_inet_flow_get_property(GObject * object, guint prop_id,
     case FLOW_LIP:
     case FLOW_SERVER_IP:
         {
-            char str[INET6_ADDRSTRLEN];
             struct sockaddr_in *lower =
                 (struct sockaddr_in *) g_inet_tuple_get_lower(&flow->tuple);
-            if (lower->sin_family == AF_INET)
-                inet_ntop(AF_INET, &lower->sin_addr, str, sizeof(str));
-            else
-                inet_ntop(AF_INET6, &((struct sockaddr_in6 *) lower)->sin6_addr, str,
-                          sizeof(str));
-            g_value_set_string(value, str);
-
+            g_value_set_pointer(value, lower);
             break;
         }
     case FLOW_UIP:
         {
-            char str[INET6_ADDRSTRLEN];
             struct sockaddr_in *upper =
                 (struct sockaddr_in *) g_inet_tuple_get_upper(&flow->tuple);
-            if (upper->sin_family == AF_INET)
-                inet_ntop(AF_INET, &upper->sin_addr, str, sizeof(str));
-            else
-                inet_ntop(AF_INET6, &((struct sockaddr_in6 *) upper)->sin6_addr, str,
-                          sizeof(str));
-            g_value_set_string(value, str);
+            g_value_set_pointer(value, upper);
             break;
         }
     default:
@@ -782,17 +769,17 @@ static void g_inet_flow_class_init(GInetFlowClass * class)
                                                       "Server port (lower port)",
                                                       0, G_MAXUINT16, 0, G_PARAM_READABLE));
     g_object_class_install_property(object_class, FLOW_LIP,
-                                    g_param_spec_string("lip", "LIP",
-                                                        "Lower IP address (smaller value)",
-                                                        NULL, G_PARAM_READABLE));
+                                    g_param_spec_pointer("lip", "LIP",
+                                                         "Lower IP address (smaller value)",
+                                                         G_PARAM_READABLE));
     g_object_class_install_property(object_class, FLOW_UIP,
-                                    g_param_spec_string("uip", "UIP",
-                                                        "Upper IP address (larger value)",
-                                                        NULL, G_PARAM_READABLE));
+                                    g_param_spec_pointer("uip", "UIP",
+                                                         "Upper IP address (larger value)",
+                                                         G_PARAM_READABLE));
     g_object_class_install_property(object_class, FLOW_SERVER_IP,
-                                    g_param_spec_string("serverip", "ServerIP",
-                                                        "Server IP address (device with lower port)",
-                                                        NULL, G_PARAM_READABLE));
+                                    g_param_spec_pointer("serverip", "ServerIP",
+                                                         "Server IP address (device with lower port)",
+                                                         G_PARAM_READABLE));
     object_class->finalize = g_inet_flow_finalize;
 }
 
