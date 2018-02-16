@@ -880,6 +880,7 @@ GInetFlow *g_inet_flow_get_full(GInetFlowTable * table,
     }
 
     packet.tuple = tuple;
+    packet.hash = 0;
 
     flow = (GInetFlow *) g_hash_table_lookup(table->table, &packet);
     if (flow) {
@@ -1055,5 +1056,6 @@ GInetFlow *g_inet_flow_lookup(GInetFlowTable * table, GInetTuple * tuple)
     GInetFlow packet;
 
     packet.tuple = *tuple;
+    packet.hash = 0;
     return (GInetFlow *) g_hash_table_lookup(table->table, &packet);
 }
