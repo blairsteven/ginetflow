@@ -1057,3 +1057,11 @@ GInetFlow *g_inet_flow_lookup(GInetFlowTable * table, GInetTuple * tuple)
     packet.tuple = *tuple;
     return (GInetFlow *) g_hash_table_lookup(table->table, &packet);
 }
+
+void g_inet_flow_establish(GInetFlowTable * table, GInetFlow * flow)
+{
+    remove_flow_by_expiry(table, flow, flow->lifetime);
+    flow->state = FLOW_OPEN;
+    flow->lifetime = G_INET_FLOW_DEFAULT_OPEN_TIMEOUT;
+    insert_flow_by_expiry(table, flow, flow->lifetime);
+}
