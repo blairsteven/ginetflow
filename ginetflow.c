@@ -644,6 +644,7 @@ enum {
     FLOW_LIP,
     FLOW_UIP,
     FLOW_SERVER_IP,
+    FLOW_DIRECTION,
 };
 
 static int find_expiry_index(guint64 lifetime)
@@ -688,6 +689,9 @@ static void g_inet_flow_get_property(GObject * object, guint prop_id,
         break;
     case FLOW_PROTOCOL:
         g_value_set_uint(value, g_inet_tuple_get_protocol(&flow->tuple));
+        break;
+    case FLOW_DIRECTION:
+        g_value_set_schar(value, flow->direction);
         break;
     case FLOW_LPORT:
     case FLOW_SERVER_PORT:
@@ -756,6 +760,11 @@ static void g_inet_flow_class_init(GInetFlowClass * class)
                                     g_param_spec_uint("protocol", "Protocol",
                                                       "IP Protocol for the flow",
                                                       0, G_MAXUINT16, 0, G_PARAM_READABLE));
+    g_object_class_install_property(object_class, FLOW_DIRECTION,
+                                    g_param_spec_char("direction", "Direction",
+                                                      "Original or Reply",
+                                                      G_MININT8, G_MAXINT8, 0,
+                                                      G_PARAM_READABLE));
     g_object_class_install_property(object_class, FLOW_LPORT,
                                     g_param_spec_uint("lport", "LPort",
                                                       "Lower L4 port (smaller value)",
@@ -802,6 +811,7 @@ void g_inet_flow_update_tcp(GInetFlow * flow, GInetFlow * packet)
         } else {
             flow->state = FLOW_NEW;
             flow->lifetime = G_INET_FLOW_DEFAULT_NEW_TIMEOUT;
+            flow->server_port = g_inet_tuple_get_dst_port(&packet->tuple);
         }
     }
     /* RST */
@@ -809,11 +819,21 @@ void g_inet_flow_update_tcp(GInetFlow * flow, GInetFlow * packet)
         flow->state = FLOW_CLOSED;
         flow->lifetime = G_INET_FLOW_DEFAULT_CLOSED_TIMEOUT;
     }
+
+    if (packet->direction == FLOW_DIRECTION_UNKNOWN) {
+        packet->direction = g_inet_tuple_get_dst_port(&packet->tuple) == flow->server_port ?
+            FLOW_DIRECTION_ORIGINAL : FLOW_DIRECTION_REPLY;
+    }
 }
 
 void g_inet_flow_update_udp(GInetFlow * flow, GInetFlow * packet)
 {
-    if (packet->direction != flow->direction) {
+    packet->direction =
+            g_inet_tuple_get_dst_port(&packet->tuple) <
+            g_inet_tuple_get_src_port(&packet->
+                                      tuple) ? FLOW_DIRECTION_ORIGINAL : FLOW_DIRECTION_REPLY;
+
+    if (flow->direction && packet->direction && packet->direction != flow->direction) {
         flow->state = FLOW_OPEN;
         flow->lifetime = G_INET_FLOW_DEFAULT_OPEN_TIMEOUT;
     }
@@ -826,6 +846,7 @@ void g_inet_flow_update(GInetFlow * flow, GInetFlow * packet)
     } else if (g_inet_tuple_get_protocol(&flow->tuple) == IP_PROTOCOL_UDP) {
         g_inet_flow_update_udp(flow, packet);
     }
+    flow->direction = packet->direction;
 }
 
 static void g_inet_flow_init(GInetFlow * flow)
@@ -907,7 +928,10 @@ GInetFlow *g_inet_flow_get_full(GInetFlowTable * table,
         flow->direction = packet.direction;
         flow->hash = packet.hash;
         flow->tuple = packet.tuple;
-        flow->server_port = packet.server_port;
+        if (packet.server_port)
+        {
+            flow->server_port = packet.server_port;
+        }
         memcpy(flow->server_ip, packet.server_ip, sizeof(packet.server_ip));
         g_hash_table_replace(table->table, (gpointer) flow, (gpointer) flow);
         table->misses++;
