@@ -40,6 +40,13 @@ typedef enum {
     FLOW_CLOSED,
 } GInetFlowState;
 
+/* Flow Directions */
+typedef enum {
+    FLOW_DIRECTION_UNKNOWN,
+    FLOW_DIRECTION_ORIGINAL,
+    FLOW_DIRECTION_REPLY,
+} GInetFlowDirection;
+
 /* Default timeouts */
 #define G_INET_FLOW_DEFAULT_NEW_TIMEOUT         30
 #define G_INET_FLOW_DEFAULT_OPEN_TIMEOUT        300
