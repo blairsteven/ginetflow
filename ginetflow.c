@@ -644,6 +644,7 @@ enum {
     FLOW_LIP,
     FLOW_UIP,
     FLOW_SERVER_IP,
+    FLOW_TUPLE,
     FLOW_DIRECTION,
 };
 
@@ -723,6 +724,11 @@ static void g_inet_flow_get_property(GObject * object, guint prop_id,
             g_value_set_pointer(value, upper);
             break;
         }
+    case FLOW_TUPLE:
+        {
+            g_value_set_pointer(value, &flow->tuple);
+            break;
+        }
     default:
         G_OBJECT_WARN_INVALID_PROPERTY_ID(flow, prop_id, pspec);
         break;
@@ -734,6 +740,7 @@ static void g_inet_flow_finalize(GObject * object)
     GInetFlow *flow = G_INET_FLOW(object);
     int index = find_expiry_index(flow->lifetime);
     g_queue_unlink(flow->table->expire_queue[index], &flow->list);
+    /* This might not be safe - we'll get called as the hash table is destroyed */
     g_hash_table_remove(flow->table->table, flow);
     G_OBJECT_CLASS(g_inet_flow_parent_class)->finalize(object);
 }
@@ -788,6 +795,10 @@ static void g_inet_flow_class_init(GInetFlowClass * class)
     g_object_class_install_property(object_class, FLOW_SERVER_IP,
                                     g_param_spec_pointer("serverip", "ServerIP",
                                                          "Server IP address (device with lower port)",
+                                                         G_PARAM_READABLE));
+    g_object_class_install_property(object_class, FLOW_TUPLE,
+                                    g_param_spec_pointer("tuple", "Tuple pointer",
+                                                         "Full GInetTuple*",
                                                          G_PARAM_READABLE));
     object_class->finalize = g_inet_flow_finalize;
 }
@@ -974,6 +985,7 @@ static void g_inet_flow_table_finalize(GObject * object)
     int i;
 
     GInetFlowTable *table = G_INET_FLOW_TABLE(object);
+    g_hash_table_remove_all(table->table);
     g_hash_table_destroy(table->table);
     g_inet_frag_list_free(table->frag_info_list);
     for (i = 0; i < LIFETIME_COUNT; i++) {
@@ -1039,7 +1051,7 @@ static void g_inet_flow_table_init(GInetFlowTable * table)
 {
     int i;
 
-    table->table = g_hash_table_new((GHashFunc) flow_hash, (GEqualFunc) flow_compare);
+    table->table = g_hash_table_new_full((GHashFunc) flow_hash, (GEqualFunc) flow_compare, NULL, g_object_unref);
     table->frag_info_list = g_inet_frag_list_new();
 
     for (i = 0; i < LIFETIME_COUNT; i++) {
