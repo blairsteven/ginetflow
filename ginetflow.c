@@ -740,8 +740,7 @@ static void g_inet_flow_finalize(GObject * object)
     GInetFlow *flow = G_INET_FLOW(object);
     int index = find_expiry_index(flow->lifetime);
     g_queue_unlink(flow->table->expire_queue[index], &flow->list);
-    /* This might not be safe - we'll get called as the hash table is destroyed */
-    g_hash_table_remove(flow->table->table, flow);
+    g_hash_table_steal(flow->table->table, flow);
     G_OBJECT_CLASS(g_inet_flow_parent_class)->finalize(object);
 }
 
