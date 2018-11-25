@@ -442,18 +442,22 @@ static gboolean flow_parse_ipv6(GInetTuple * f, const guint8 * data, guint32 len
         }
         break;
     case IP_PROTOCOL_IPV4:
-        if (!flow_parse_ipv4(f, data, length, fragments, iphr, ts, tcp_flags, tunnel)) {
-            return FALSE;
-        }
+        if (tunnel)
+            if (!flow_parse_ipv4(f, data, length, fragments, iphr, ts, tcp_flags, tunnel)) {
+                return FALSE;
+            }
         break;
     case IP_PROTOCOL_IPV6:
-        if (!flow_parse_ipv6(f, data, length, fragments, iphr, ts, tcp_flags, tunnel)) {
-            return FALSE;
-        }
+        if (tunnel)
+            if (!flow_parse_ipv6(f, data, length, fragments, iphr, ts, tcp_flags, tunnel)) {
+                return FALSE;
+            }
         break;
     case IP_PROTOCOL_GRE:
         if (tunnel)
-            flow_parse_gre(f, data, length, fragments, iphr, ts, tcp_flags);
+            if (!flow_parse_gre(f, data, length, fragments, iphr, ts, tcp_flags)) {
+                return FALSE;
+            }
         break;
     case IP_PROTOCOL_HBH_OPT:
     case IP_PROTOCOL_DEST_OPT:
