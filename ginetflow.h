@@ -58,7 +58,7 @@ GInetFlow *g_inet_flow_get(GInetFlowTable * table, const guint8 * frame, guint l
 GInetFlow *g_inet_flow_get_full(GInetFlowTable * table, const guint8 * frame,
                                 guint length, guint16 hash, guint64 timestamp,
                                 gboolean update, gboolean l2, gboolean inspect_tunnel,
-                                const uint8_t ** iphr);
+                                const uint8_t ** iphr, GInetTuple **);
 GInetFlow *g_inet_flow_create(GInetFlowTable * table, GInetTuple * tuple);
 GInetFlow *g_inet_flow_expire(GInetFlowTable * table, guint64 ts);
 void g_inet_flow_establish(GInetFlowTable * table, GInetFlow * flow);

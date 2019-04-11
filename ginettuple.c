@@ -120,6 +120,26 @@ gboolean g_inet_tuple_equal(GInetTuple * a, GInetTuple * b)
     return TRUE;
 }
 
+gboolean g_inet_tuple_exact(GInetTuple * a, GInetTuple *b)
+{
+  if (a->protocol != b->protocol) {
+      return FALSE;
+  }
+
+  struct sockaddr_storage *src_a = g_inet_tuple_get_src(a);
+  struct sockaddr_storage *dst_a = g_inet_tuple_get_dst(a);
+  struct sockaddr_storage *src_b = g_inet_tuple_get_src(b);
+  struct sockaddr_storage *dst_b = g_inet_tuple_get_dst(b);
+
+  if (sock_address_comparison(src_a, src_b)) {
+      return FALSE;
+  }
+  if (sock_address_comparison(dst_a, dst_b)) {
+      return FALSE;
+  }
+  return TRUE;
+}
+
 guint g_inet_tuple_hash(GInetTuple * tuple)
 {
     if (tuple->hash)
