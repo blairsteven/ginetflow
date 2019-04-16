@@ -43,6 +43,7 @@ struct sockaddr_storage *g_inet_tuple_get_server(GInetTuple * tuple);
 void g_inet_tuple_set_protocol(GInetTuple * tuple, guint16 protocol);
 guint16 g_inet_tuple_get_protocol(GInetTuple * tuple);
 gboolean g_inet_tuple_equal(GInetTuple * a, GInetTuple * b);
+gboolean g_inet_tuple_exact(GInetTuple * a, GInetTuple * b);
 guint g_inet_tuple_hash(GInetTuple * t);
 
 

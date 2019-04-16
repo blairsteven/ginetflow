@@ -889,32 +889,39 @@ GInetFlow *g_inet_flow_expire(GInetFlowTable * table, guint64 ts)
 
 GInetFlow *g_inet_flow_get(GInetFlowTable * table, const guint8 * frame, guint length)
 {
-    return g_inet_flow_get_full(table, frame, length, 0, 0, FALSE, TRUE, FALSE, NULL);
+    return g_inet_flow_get_full(table, frame, length, 0, 0, FALSE, TRUE, FALSE, NULL, NULL);
 }
 
 GInetFlow *g_inet_flow_get_full(GInetFlowTable * table,
                                 const guint8 * frame, guint length,
                                 guint16 hash, guint64 timestamp, gboolean update,
-                                gboolean l2, gboolean inspect_tunnel, const uint8_t ** iphr)
+                                gboolean l2, gboolean inspect_tunnel, const uint8_t ** iphr,
+                                GInetTuple **ret_tuple)
 {
     GInetFlow packet = {.timestamp = timestamp };
-    GInetTuple tuple = { 0 };
+    GInetTuple *tuple = NULL;
     GInetFlow *flow = NULL;
+
+    tuple = calloc(1, sizeof(GInetTuple));
+
+    if (ret_tuple) {
+        *ret_tuple = tuple;
+    }
 
     if (l2) {
         if (!flow_parse
-            (&tuple, frame, length, hash, table->frag_info_list, iphr, timestamp,
+            (tuple, frame, length, hash, table->frag_info_list, iphr, timestamp,
              &packet.flags, inspect_tunnel)) {
             goto exit;
         }
     } else
         if (!flow_parse_ip
-            (&tuple, frame, length, hash, table->frag_info_list, iphr, timestamp,
+            (tuple, frame, length, hash, table->frag_info_list, iphr, timestamp,
              &packet.flags, inspect_tunnel)) {
         goto exit;
     }
 
-    packet.tuple = tuple;
+    packet.tuple = *tuple;
     packet.hash = 0;
 
     flow = (GInetFlow *) g_hash_table_lookup(table->table, &packet);
@@ -955,6 +962,10 @@ GInetFlow *g_inet_flow_get_full(GInetFlowTable * table,
         flow->packets++;
     }
   exit:
+    /* We may need to release the temporary tuple */
+    if (!ret_tuple) {
+        free (tuple);
+    }
 
     return flow;
 }
