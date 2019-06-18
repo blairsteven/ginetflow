@@ -900,12 +900,16 @@ GInetFlow *g_inet_flow_get_full(GInetFlowTable * table,
 {
     GInetFlow packet = {.timestamp = timestamp };
     GInetTuple *tuple = NULL;
+    GInetTuple tmp_tuple = { 0 };
     GInetFlow *flow = NULL;
 
-    tuple = calloc(1, sizeof(GInetTuple));
-
     if (ret_tuple) {
+        tuple = calloc(1, sizeof(GInetTuple));
         *ret_tuple = tuple;
+    }
+    else
+    {
+        tuple = &tmp_tuple;
     }
 
     if (l2) {
@@ -962,11 +966,6 @@ GInetFlow *g_inet_flow_get_full(GInetFlowTable * table,
         flow->packets++;
     }
   exit:
-    /* We may need to release the temporary tuple */
-    if (!ret_tuple) {
-        free (tuple);
-    }
-
     return flow;
 }
 
