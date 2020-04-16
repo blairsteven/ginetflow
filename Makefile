@@ -6,7 +6,6 @@ DESTDIR?=
 PREFIX?=/usr/
 CC:=$(CROSS_COMPILE)gcc
 PKG_CONFIG ?= pkg-config
-GREP = grep --line-buffered --color=always
 
 CFLAGS = -fPIC -g -O2
 
@@ -21,24 +20,6 @@ DEMO_CFLAGS += $(shell $(PKG_CONFIG) --cflags libndpi)
 DEMO_CFLAGS += -DLIBNDPI_$(NDPIVERSION)_API
 DEMO_LDFLAGS = $(LDFLAGS) $(EXTRA_LDFLAGS) -L. -lginetflow
 DEMO_LDFLAGS += $(shell $(PKG_CONFIG) --libs libndpi) -lpcap
-endif
-
-NOVAPROVA := $(shell $(PKG_CONFIG) --atleast-version=1.4 novaprova && echo yes || echo no)
-ifeq ($(NOVAPROVA),yes)
-NOVAPROVA_CFLAGS= $(CFLAGS) $(EXTRA_CFLAGS) `$(PKG_CONFIG) --cflags novaprova`
-NOVAPROVA_LIBS := $(LDFLAGS) `$(PKG_CONFIG) --libs novaprova` $(EXTRA_LDFLAGS) -lz -liberty
-FORMAT_RESULTS = $(GREP) -v "^np: running" $(COLOR_RESULTS)
-COLOR_RESULTS = | $(GREP) -E 'FAIL|$$' | GREP_COLOR='01;32' $(GREP) -E 'PASS|$$'
-ifeq (test, $(firstword $(MAKECMDGOALS)))
-ifneq ($(word 2, $(MAKECMDGOALS)),)
-TESTSPEC = test.$(word 2, $(MAKECMDGOALS))
-endif
-endif
-ifndef NOVAPROVA_VALGRIND
-ifeq ($(VALGRIND),no)
-export NOVAPROVA_VALGRIND=no
-endif
-endif
 endif
 
 LIBRARY = libginetflow.so
@@ -60,8 +41,8 @@ demo: demo.c $(LIBRARY)
 test: test.c
 	@echo "Building $@"
 	$(Q)mkdir -p gcov
-	$(Q)$(CC) -g -fprofile-arcs -fprofile-dir=gcov -ftest-coverage $(NOVAPROVA_CFLAGS) -o $@ $< $(NOVAPROVA_LIBS)
-	$(Q)G_SLICE=always-malloc VALGRIND_OPTS=--suppressions=valgrind.supp ./test $(TESTSPEC) 2>&1 | $(FORMAT_RESULTS)
+	$(Q)$(CC) -g -fprofile-arcs -fprofile-dir=gcov -ftest-coverage $(CFLAGS) $(EXTRA_CFLAGS) -o $@ $< $(LDFLAGS) $(EXTRA_LDFLAGS)
+	$(Q)G_SLICE=always-malloc VALGRIND_OPTS=--suppressions=valgrind.supp valgrind --leak-check=full ./test 2>&1
 	$(Q)mv *.gcno gcov/
 	$(Q)lcov -q --capture --directory . --output-file gcov/coverage.info
 	$(Q)genhtml -q gcov/coverage.info --output-directory gcov

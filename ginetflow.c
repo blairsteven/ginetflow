@@ -314,6 +314,7 @@ static gboolean flow_parse_gre(GInetTuple * f, const guint8 * data, guint32 leng
     if (length < offset)
         return FALSE;
 
+    DEBUG("Protocol: %d\n", proto);
     switch (proto) {
     case ETH_PROTOCOL_IP:
         if (!flow_parse_ipv4
@@ -326,7 +327,7 @@ static gboolean flow_parse_gre(GInetTuple * f, const guint8 * data, guint32 leng
             return FALSE;
         break;
     default:
-        return FALSE;
+        break;
     }
     return TRUE;
 }
@@ -367,9 +368,11 @@ static gboolean flow_parse_ipv4(GInetTuple * f, const guint8 * data, guint32 len
                 return FALSE;
             break;
         case IP_PROTOCOL_GRE:
-            if (tunnel)
-                flow_parse_gre(f, data + sizeof(ip_hdr_t), length - sizeof(ip_hdr_t),
-                               fragments, iphr, ts, tcp_flags);
+            if (tunnel) {
+                if (!flow_parse_gre(f, data + sizeof(ip_hdr_t), length - sizeof(ip_hdr_t), 
+                                    fragments, iphr, ts, tcp_flags))
+                    return FALSE;
+            }
             break;
         case IP_PROTOCOL_ICMP:
         default:
