@@ -20,8 +20,9 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include <string.h>
+#include <arpa/inet.h>
 #include <pcap.h>
-#if defined(LIBNDPI_OLD_API) || defined(LIBNDPI_NEW_API)
+#if defined(LIBNDPI_OLD_API) || defined(LIBNDPI_NEW_API) || defined(LIBNDPI_NEWEST_API)
 #include "libndpi/ndpi_api.h"
 #endif
 #include <glib.h>
@@ -40,7 +41,7 @@ static gint processed[MAX_WORKERS] = { };
 static gint frames = 0;
 static GInetFlowTable *table = NULL;
 
-#if defined(LIBNDPI_OLD_API) || defined(LIBNDPI_NEW_API)
+#if defined(LIBNDPI_OLD_API) || defined(LIBNDPI_NEW_API) || defined(LIBNDPI_NEWEST_API)
 static struct ndpi_detection_module_struct *module = NULL;
 static u_int32_t flow_size = 0;
 static u_int32_t id_size = 0;
@@ -61,12 +62,23 @@ static void ndpi_debug_function(u_int32_t protocol, void *module_struct,
     va_end(args);
 }
 
+static bool ndpi_flow_giveup(GInetFlow *flow)
+{
+    u_int32_t flow_protocol = 0;
+    uint64_t packets = 0;
+    g_object_get(flow, "protocol", &flow_protocol, NULL);
+    g_object_get(flow, "packets", &packets, NULL);
+    return ((flow_protocol != IPPROTO_UDP && flow_protocol != IPPROTO_TCP) ||
+            (flow_protocol == IPPROTO_UDP && packets > 8) ||
+            (flow_protocol == IPPROTO_TCP && packets > 10));
+}
+
 static void analyse_frame(GInetFlow * flow, const uint8_t * iph, uint32_t length)
 {
     ndpi_context *ndpi;
     ndpi = (ndpi_context *) g_object_get_data((GObject *) flow, "ndpi");
     const u_int64_t time = 0;
-#ifdef LIBNDPI_NEW_API
+#if defined(LIBNDPI_NEW_API) || defined(LIBNDPI_NEWEST_API)
     ndpi_protocol protocol;
 #else
     u_int16_t protocol;
@@ -85,15 +97,23 @@ static void analyse_frame(GInetFlow * flow, const uint8_t * iph, uint32_t length
     protocol =
         ndpi_detection_process_packet(module, ndpi->flow, iph, length, time,
                                       ndpi->src, ndpi->dst);
-#ifdef LIBNDPI_NEW_API
+
+#if defined(LIBNDPI_NEWEST_API)
+    ndpi->protocol = protocol.app_protocol;
+#elif defined(LIBNDPI_NEW_API)
     ndpi->protocol = protocol.protocol;
 #else
     ndpi->protocol = protocol;
 #endif
-    if ((ndpi->protocol != NDPI_PROTOCOL_UNKNOWN)
-        /*|| ((proto == IPPROTO_UDP) && (flow->packets > 8))
-           || ((proto == IPPROTO_TCP) && (flow->packets > 10)) */
-        ) {
+    if (ndpi->protocol == 0 && ndpi_flow_giveup (flow)) {
+        protocol = ndpi_detection_giveup (module, ndpi->flow);
+#if defined(LIBNDPI_NEWEST_API)
+        ndpi->protocol = protocol.app_protocol;
+#elif defined(LIBNDPI_NEW_API)
+        ndpi->protocol = protocol.protocol;
+#else
+        ndpi->protocol = protocol;
+#endif
         ndpi->done = 1;
     }
 
@@ -113,7 +133,7 @@ static void worker_func(gpointer a, gpointer b)
 {
     Job *job = (Job *) a;
     int id = GPOINTER_TO_INT(b);
-#if defined(LIBNDPI_OLD_API) || defined(LIBNDPI_NEW_API)
+#if defined(LIBNDPI_OLD_API) || defined(LIBNDPI_NEW_API) || defined(LIBNDPI_NEWEST_API)
     if (dpi)
         analyse_frame(job->flow, job->iph, job->length);
 #endif
@@ -125,7 +145,7 @@ static void worker_func(gpointer a, gpointer b)
 static void process_frame(const uint8_t * frame, uint32_t length)
 {
     const uint8_t *iph = NULL;
-    GInetFlow *flow = g_inet_flow_get_full(table, frame, length, 0, 0, TRUE, TRUE, &iph);
+    GInetFlow *flow = g_inet_flow_get_full(table, frame, length, 0, 0, TRUE, TRUE, TRUE, &iph, NULL);
     if (flow && iph) {
         guint hash = 0;
         Job *job = calloc(1, sizeof(Job));
@@ -171,8 +191,10 @@ static void print_flow(GInetFlow * flow, gpointer data)
 {
     guint state, hash, protocol, lport, uport;
     guint64 packets;
-    gchar *lip, *uip;
-#if defined(LIBNDPI_OLD_API) || defined(LIBNDPI_NEW_API)
+    struct sockaddr_in *lip, *uip;
+    char lips[INET6_ADDRSTRLEN];
+    char uips[INET6_ADDRSTRLEN];
+#if defined(LIBNDPI_OLD_API) || defined(LIBNDPI_NEW_API) || defined(LIBNDPI_NEWEST_API)
     ndpi_context *ndpi = (ndpi_context *) g_object_get_data((GObject *) flow, "ndpi");
     char *proto = dpi ? ndpi_get_proto_name(module, ndpi->protocol) : "";
     if (strcmp(proto, "Unknown") == 0)
@@ -184,20 +206,20 @@ static void print_flow(GInetFlow * flow, gpointer data)
     g_object_get(flow, "hash", &hash, "protocol", &protocol, NULL);
     g_object_get(flow, "lport", &lport, "uport", &uport, NULL);
     g_object_get(flow, "lip", &lip, "uip", &uip, NULL);
+    inet_ntop (AF_INET, &lip->sin_addr, lips, INET_ADDRSTRLEN);
+    inet_ntop (AF_INET, &uip->sin_addr, uips, INET_ADDRSTRLEN);
     g_printf("0x%04x: %-16s %-16s %-2d %-5d %-5d  %-5zu %s %s\n",
-             hash, lip, uip, protocol, lport, uport, packets,
+             hash, lips, uips, protocol, lport, uport, packets,
              state == FLOW_NEW ? "NEW   " : (state == FLOW_OPEN ? "OPEN  " : "CLOSED"),
-#if defined(LIBNDPI_OLD_API) || defined(LIBNDPI_NEW_API)
+#if defined(LIBNDPI_OLD_API) || defined(LIBNDPI_NEW_API) || defined(LIBNDPI_NEWEST_API)
              dpi ? proto :
 #endif
              "");
-    g_free(lip);
-    g_free(uip);
 }
 
 static void clean_flow(GInetFlow * flow, gpointer data)
 {
-#if defined(LIBNDPI_OLD_API) || defined(LIBNDPI_NEW_API)
+#if defined(LIBNDPI_OLD_API) || defined(LIBNDPI_NEW_API) || defined(LIBNDPI_NEWEST_API)
     ndpi_context *ndpi = (ndpi_context *) g_object_get_data((GObject *) flow, "ndpi");
     if (ndpi) {
         ndpi_free_flow(ndpi->flow);
@@ -212,7 +234,7 @@ static void clean_flow(GInetFlow * flow, gpointer data)
 static GOptionEntry entries[] = {
     {"pcap", 'p', 0, G_OPTION_ARG_STRING, &filename, "Pcap file to use", NULL},
     {"workers", 'w', 0, G_OPTION_ARG_INT, &nworkers, "Number of worker threads", NULL},
-#if defined(LIBNDPI_OLD_API) || defined(LIBNDPI_NEW_API)
+#if defined(LIBNDPI_OLD_API) || defined(LIBNDPI_NEW_API) || defined(LIBNDPI_NEWEST_API)
     {"dpi", 'd', 0, G_OPTION_ARG_NONE, &dpi, "Analyse frames using DPI", NULL},
 #endif
     {"verbose", 'v', 0, G_OPTION_ARG_NONE, &verbose, "Be verbose", NULL},
@@ -243,12 +265,16 @@ int main(int argc, char **argv)
         g_print("ERROR: 1-%d workers\n", MAX_WORKERS);
         exit(1);
     }
-#if defined(LIBNDPI_OLD_API) || defined(LIBNDPI_NEW_API)
+#if defined(LIBNDPI_OLD_API) || defined(LIBNDPI_NEW_API) || defined(LIBNDPI_NEWEST_API)
     if (dpi) {
         NDPI_PROTOCOL_BITMASK all;
         flow_size = ndpi_detection_get_sizeof_ndpi_flow_struct();
         id_size = ndpi_detection_get_sizeof_ndpi_id_struct();
+#if defined(LIBNDPI_NEWEST_API)
+        module = ndpi_init_detection_module();
+#else
         module = ndpi_init_detection_module(1000, malloc, free, ndpi_debug_function);
+#endif
         NDPI_BITMASK_SET_ALL(all);
         ndpi_set_protocol_detection_bitmask2(module, &all);
     }
@@ -286,7 +312,10 @@ int main(int argc, char **argv)
     g_inet_flow_foreach(table, (GIFFunc) print_flow, NULL);
     g_inet_flow_foreach(table, (GIFFunc) clean_flow, NULL);
     g_object_unref(table);
-#if defined(LIBNDPI_OLD_API) || defined(LIBNDPI_NEW_API)
+#if defined(LIBNDPI_NEWEST_API)
+    if (module)
+        ndpi_exit_detection_module(module);
+#elif defined(LIBNDPI_OLD_API) || defined(LIBNDPI_NEW_API)
     if (module)
         ndpi_exit_detection_module(module, free);
 #endif

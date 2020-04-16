@@ -13,7 +13,11 @@ EXTRA_CFLAGS = `$(PKG_CONFIG) --cflags glib-2.0 gio-2.0` -I.
 EXTRA_LDFLAGS = `$(PKG_CONFIG) --libs glib-2.0 gio-2.0` 
 EXTRA_LDFLAGS += -pthread
 
-NDPIVERSION := $(shell $(PKG_CONFIG) --atleast-version=1.7 libndpi && echo NEW || ($(PKG_CONFIG) --exists libndpi && echo OLD || echo NONE))
+NDPIVERSION := $(shell \
+	$(PKG_CONFIG) --atleast-version=2.2 libndpi && echo NEWEST || \
+	($(PKG_CONFIG) --atleast-version=1.7 libndpi && echo NEW || \
+	($(PKG_CONFIG) --exists libndpi && echo OLD || \
+	echo NONE)))
 ifneq ($(NDPIVERSION),NONE)
 DEMO_CFLAGS = $(CFLAGS) $(EXTRA_CFLAGS)
 DEMO_CFLAGS += $(shell $(PKG_CONFIG) --cflags libndpi)
