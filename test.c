@@ -2140,6 +2140,144 @@ void test_flow_expiry_queue()
     g_object_unref(table);
 }
 
+void test_flow_match_udp()
+{
+    GInetFlowTable *table;
+    GInetFlow *flow1, *flow2;
+    guint len;
+
+    setup_test();
+    g_assert_nonnull((table = g_inet_flow_table_new()));
+
+    len = make_pkt(test_buffer, ETH_PROTOCOL_IP, IP_PROTOCOL_UDP);
+    flow1 = g_inet_flow_get_full(table, test_buffer, len, 0, 0, TRUE, TRUE, FALSE, NULL, NULL);
+    g_assert_nonnull(flow1);
+
+    len = make_pkt_reverse(test_buffer, ETH_PROTOCOL_IP, IP_PROTOCOL_UDP);
+    flow2 = g_inet_flow_get_full(table, test_buffer, len, 0, 0, TRUE, TRUE, FALSE, NULL, NULL);
+    g_assert_nonnull(flow2);
+
+    g_assert(flow1 == flow2);
+
+    g_object_unref(flow1);
+    g_object_unref(table);
+}
+
+void test_flow_match_udp6()
+{
+    GInetFlowTable *table;
+    GInetFlow *flow1, *flow2;
+    guint len;
+
+    setup_test();
+    g_assert_nonnull((table = g_inet_flow_table_new()));
+
+    len = make_pkt(test_buffer, ETH_PROTOCOL_IPV6, IP_PROTOCOL_UDP);
+    flow1 = g_inet_flow_get_full(table, test_buffer, len, 0, 0, TRUE, TRUE, FALSE, NULL, NULL);
+    g_assert_nonnull(flow1);
+
+    len = make_pkt_reverse(test_buffer, ETH_PROTOCOL_IPV6, IP_PROTOCOL_UDP);
+    flow2 = g_inet_flow_get_full(table, test_buffer, len, 0, 0, TRUE, TRUE, FALSE, NULL, NULL);
+    g_assert_nonnull(flow2);
+
+    g_assert(flow1 == flow2);
+
+    g_object_unref(flow1);
+    g_object_unref(table);
+}
+
+void test_flow_match_tcp()
+{
+    GInetFlowTable *table;
+    GInetFlow *flow1, *flow2;
+    guint len;
+
+    setup_test();
+    g_assert_nonnull((table = g_inet_flow_table_new()));
+
+    len = make_pkt(test_buffer, ETH_PROTOCOL_IP, IP_PROTOCOL_TCP);
+    flow1 = g_inet_flow_get_full(table, test_buffer, len, 0, 0, TRUE, TRUE, FALSE, NULL, NULL);
+    g_assert_nonnull(flow1);
+
+    len = make_pkt_reverse(test_buffer, ETH_PROTOCOL_IP, IP_PROTOCOL_TCP);
+    flow2 = g_inet_flow_get_full(table, test_buffer, len, 0, 0, TRUE, TRUE, FALSE, NULL, NULL);
+    g_assert_nonnull(flow2);
+
+    g_assert(flow1 == flow2);
+
+    g_object_unref(flow1);
+    g_object_unref(table);
+}
+
+void test_flow_match_tcp6()
+{
+    GInetFlowTable *table;
+    GInetFlow *flow1, *flow2;
+    guint len;
+
+    setup_test();
+    g_assert_nonnull((table = g_inet_flow_table_new()));
+
+    len = make_pkt(test_buffer, ETH_PROTOCOL_IPV6, IP_PROTOCOL_TCP);
+    flow1 = g_inet_flow_get_full(table, test_buffer, len, 0, 0, TRUE, TRUE, FALSE, NULL, NULL);
+    g_assert_nonnull(flow1);
+
+    len = make_pkt_reverse(test_buffer, ETH_PROTOCOL_IPV6, IP_PROTOCOL_TCP);
+    flow2 = g_inet_flow_get_full(table, test_buffer, len, 0, 0, TRUE, TRUE, FALSE, NULL, NULL);
+    g_assert_nonnull(flow2);
+
+    g_assert(flow1 == flow2);
+
+    g_object_unref(flow1);
+    g_object_unref(table);
+}
+
+void test_flow_match_icmp()
+{
+    GInetFlowTable *table;
+    GInetFlow *flow1, *flow2;
+    guint len;
+
+    setup_test();
+    g_assert_nonnull((table = g_inet_flow_table_new()));
+
+    len = make_pkt(test_buffer, ETH_PROTOCOL_IP, IP_PROTOCOL_ICMP);
+    flow1 = g_inet_flow_get_full(table, test_buffer, len, 0, 0, TRUE, TRUE, FALSE, NULL, NULL);
+    g_assert_nonnull(flow1);
+
+    len = make_pkt_reverse(test_buffer, ETH_PROTOCOL_IP, IP_PROTOCOL_ICMP);
+    flow2 = g_inet_flow_get_full(table, test_buffer, len, 0, 0, TRUE, TRUE, FALSE, NULL, NULL);
+    g_assert_nonnull(flow2);
+
+    g_assert(flow1 == flow2);
+
+    g_object_unref(flow1);
+    g_object_unref(table);
+}
+
+void test_flow_match_icmp6()
+{
+    GInetFlowTable *table;
+    GInetFlow *flow1, *flow2;
+    guint len;
+
+    setup_test();
+    g_assert_nonnull((table = g_inet_flow_table_new()));
+
+    len = make_pkt(test_buffer, ETH_PROTOCOL_IPV6, IP_PROTOCOL_ICMP);
+    flow1 = g_inet_flow_get_full(table, test_buffer, len, 0, 0, TRUE, TRUE, FALSE, NULL, NULL);
+    g_assert_nonnull(flow1);
+
+    len = make_pkt_reverse(test_buffer, ETH_PROTOCOL_IPV6, IP_PROTOCOL_ICMP);
+    flow2 = g_inet_flow_get_full(table, test_buffer, len, 0, 0, TRUE, TRUE, FALSE, NULL, NULL);
+    g_assert_nonnull(flow2);
+
+    g_assert(flow1 == flow2);
+
+    g_object_unref(flow1);
+    g_object_unref(table);
+}
+
 int main (int argc, char *argv[])
 {
     int rc;
@@ -2202,6 +2340,12 @@ int main (int argc, char *argv[])
     g_test_add_func ("/flow/parse/ipv6/fragment", test_flow_parse_ipv6_fragment);
     g_test_add_func ("/clear/expired_frag_info", test_clear_expired_frag_info);
     g_test_add_func ("/flow/expiry/queue", test_flow_expiry_queue);
+    g_test_add_func ("/flow/match/udp", test_flow_match_udp);
+    g_test_add_func ("/flow/match/udp6", test_flow_match_udp6);
+    g_test_add_func ("/flow/match/tcp", test_flow_match_tcp);
+    g_test_add_func ("/flow/match/tcp6", test_flow_match_tcp6);
+    g_test_add_func ("/flow/match/icmp", test_flow_match_icmp);
+    g_test_add_func ("/flow/match/icmp6", test_flow_match_icmp6);
 
     rc = g_test_run();
     return rc;

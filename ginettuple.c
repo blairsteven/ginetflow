@@ -19,6 +19,23 @@
 #include "ginettuple.h"
 #include <string.h>
 
+static int sock_address_comparison(struct sockaddr_storage *a, struct sockaddr_storage *b)
+{
+    if (((struct sockaddr_in *) a)->sin_family != ((struct sockaddr_in *) a)->sin_family) {
+        return 1;
+    }
+
+    if (((struct sockaddr_in *) a)->sin_family == AF_INET) {
+        struct sockaddr_in *a_v4 = (struct sockaddr_in *) a;
+        struct sockaddr_in *b_v4 = (struct sockaddr_in *) b;
+        return memcmp(&a_v4->sin_addr, &b_v4->sin_addr, sizeof(a_v4->sin_addr));
+    } else {
+        struct sockaddr_in6 *a_v6 = (struct sockaddr_in6 *) a;
+        struct sockaddr_in6 *b_v6 = (struct sockaddr_in6 *) b;
+        return memcmp(&a_v6->sin6_addr, &b_v6->sin6_addr, sizeof(a_v6->sin6_addr));
+    }
+}
+
 void clear_cached(GInetTuple * tuple)
 {
     tuple->hash = 0;
@@ -51,8 +68,11 @@ void g_inet_tuple_set_protocol(GInetTuple * tuple, guint16 protocol)
 
 struct sockaddr_storage *g_inet_tuple_get_lower(GInetTuple * tuple)
 {
-    if (((struct sockaddr_in *) &tuple->src)->sin_port <
-        ((struct sockaddr_in *) &tuple->dst)->sin_port)
+    guint16 sport = ((struct sockaddr_in *) &tuple->src)->sin_port;
+    guint16 dport = ((struct sockaddr_in *) &tuple->dst)->sin_port;
+    if (sport < dport ||
+        (sport == 0 && dport == 0 &&
+         sock_address_comparison(&tuple->src, &tuple->dst) < 0))
         return &tuple->src;
     else
         return &tuple->dst;
@@ -60,11 +80,14 @@ struct sockaddr_storage *g_inet_tuple_get_lower(GInetTuple * tuple)
 
 struct sockaddr_storage *g_inet_tuple_get_upper(GInetTuple * tuple)
 {
-    if (((struct sockaddr_in *) &tuple->src)->sin_port >=
-        ((struct sockaddr_in *) &tuple->dst)->sin_port)
-        return &tuple->src;
-    else
+    guint16 sport = ((struct sockaddr_in *) &tuple->src)->sin_port;
+    guint16 dport = ((struct sockaddr_in *) &tuple->dst)->sin_port;
+    if (dport > sport ||
+        (dport == 0 && sport == 0 &&
+         sock_address_comparison(&tuple->dst, &tuple->src) > 0))
         return &tuple->dst;
+    else
+        return &tuple->src;
 }
 
 struct sockaddr_storage *g_inet_tuple_get_server(GInetTuple * tuple)
@@ -80,23 +103,6 @@ struct sockaddr_storage *g_inet_tuple_get_client(GInetTuple * tuple)
 guint16 g_inet_tuple_get_protocol(GInetTuple * tuple)
 {
     return tuple->protocol;
-}
-
-static int sock_address_comparison(struct sockaddr_storage *a, struct sockaddr_storage *b)
-{
-    if (((struct sockaddr_in *) a)->sin_family != ((struct sockaddr_in *) a)->sin_family) {
-        return 1;
-    }
-
-    if (((struct sockaddr_in *) a)->sin_family == AF_INET) {
-        struct sockaddr_in *a_v4 = (struct sockaddr_in *) a;
-        struct sockaddr_in *b_v4 = (struct sockaddr_in *) b;
-        return memcmp(&a_v4->sin_addr, &b_v4->sin_addr, sizeof(a_v4->sin_addr));
-    } else {
-        struct sockaddr_in6 *a_v6 = (struct sockaddr_in6 *) a;
-        struct sockaddr_in6 *b_v6 = (struct sockaddr_in6 *) b;
-        return memcmp(&a_v6->sin6_addr, &b_v6->sin6_addr, sizeof(a_v6->sin6_addr));
-    }
 }
 
 gboolean g_inet_tuple_equal(GInetTuple * a, GInetTuple * b)
@@ -116,7 +122,6 @@ gboolean g_inet_tuple_equal(GInetTuple * a, GInetTuple * b)
     if (sock_address_comparison(upper_a, upper_b)) {
         return FALSE;
     }
-
     return TRUE;
 }
 
